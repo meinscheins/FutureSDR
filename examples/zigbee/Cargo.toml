@@ -19,6 +19,10 @@ path = "src/bin/trx.rs"
 name = "tx"
 path = "src/bin/tx.rs"
 
+[[bin]]
+name = "uav"
+path = "src/bin/uav.rs"
+
 [dependencies]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
