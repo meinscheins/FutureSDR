@@ -1,4 +1,5 @@
 use clap::Parser;
+use futuresdr::blocks::BlobToUdp;
 use std::time::Duration;
 
 use futuresdr::anyhow::Result;
@@ -124,8 +125,14 @@ fn main() -> Result<()> {
     fg.connect_stream(mm, "out", decoder, "in")?;
     fg.connect_message(decoder, "out", mac, "rx")?;
 
+    if let Some(ref remote) = args.tx_forward {
+        let udp = fg.add_block(BlobToUdp::new(remote));
+        fg.connect_message(mac, "rxed", udp, "in")?;
+    }
+
     let rt = Runtime::new();
     let (fg, mut handle) = rt.start(fg);
+    let mut handle2 = handle.clone();
 
     // if tx_interval is set, send messages periodically
     if let Some(tx_interval) = args.tx_interval {
@@ -148,12 +155,22 @@ fn main() -> Result<()> {
 
     if let Some(rx_port) = args.rx_port {
         rt.spawn_background(async move {
-        let socket = UdpSocket::bind(format!("0.0.0.0:{}", rx_port)).await.unwrap();
-        let mut buf = vec![0u8; 1024];
+            let socket = UdpSocket::bind(format!("0.0.0.0:{}", rx_port))
+                .await
+                .unwrap();
+            let mut buf = vec![0u8; 1024];
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                println!("received from socket");
-                println!("{:?}", &buf[0..n]);
+                // println!("received from socket");
+                // println!("{:?}", &buf[0..n]);
+                handle2
+                    .call(
+                        0, // mac block
+                        1, // tx handler
+                        Pmt::Blob(buf[0..n].to_vec()),
+                    )
+                    .await
+                    .unwrap();
             }
         });
     }
