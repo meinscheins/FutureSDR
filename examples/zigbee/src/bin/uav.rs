@@ -4,6 +4,7 @@ use std::time::Duration;
 use futuresdr::anyhow::Result;
 use futuresdr::async_io::block_on;
 use futuresdr::async_io::Timer;
+use futuresdr::async_net::UdpSocket;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::SoapySinkBuilder;
 use futuresdr::blocks::SoapySourceBuilder;
@@ -22,24 +23,34 @@ use zigbee::Mac;
 #[derive(Parser, Debug)]
 #[clap(version)]
 struct Args {
+    /// ZigBee channel for receiver (11..=26)
     #[clap(long, default_value_t = 26)]
     rx_channel: u32,
+    /// ZigBee channel for transmitter (11..=26)
     #[clap(long, default_value_t = 26)]
     tx_channel: u32,
-    #[clap(long, default_value_t = 50.0)]
+    #[clap(long, default_value_t = 20.0)]
     rx_gain: f64,
-    #[clap(long, default_value_t = 22.0)]
+    #[clap(long, default_value_t = 20.0)]
     tx_gain: f64,
     #[clap(long)]
     tx_interval: Option<f32>,
+    /// Message that is sent if a tx-interval is set
     #[clap(long, default_value = "FutureSDR")]
     tx_msg: String,
     #[clap(long, default_value = "TX/RX")]
     tx_antenna: String,
     #[clap(long, default_value = "RX2")]
     rx_antenna: String,
+    /// X310 IP
     #[clap(long, default_value = "10.10.23.1")]
     sdr_ip: String,
+    /// local UDP port to receive messages to send
+    #[clap(long)]
+    rx_port: Option<u32>,
+    /// remote UDP server to forward received messages to
+    #[clap(long)]
+    tx_forward: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -131,6 +142,18 @@ fn main() -> Result<()> {
                     .await
                     .unwrap();
                 seq += 1;
+            }
+        });
+    }
+
+    if let Some(rx_port) = args.rx_port {
+        rt.spawn_background(async move {
+        let socket = UdpSocket::bind(format!("0.0.0.0:{}", rx_port)).await.unwrap();
+        let mut buf = vec![0u8; 1024];
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                println!("received from socket");
+                println!("{:?}", &buf[0..n]);
             }
         });
     }
