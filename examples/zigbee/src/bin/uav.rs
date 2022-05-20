@@ -30,6 +30,16 @@ struct Args {
     rx_gain: f64,
     #[clap(long, default_value_t = 22.0)]
     tx_gain: f64,
+    #[clap(long)]
+    tx_interval: Option<f32>,
+    #[clap(long, default_value = "FutureSDR")]
+    tx_msg: String,
+    #[clap(long, default_value = "TX/RX")]
+    tx_antenna: String,
+    #[clap(long, default_value = "RX2")]
+    rx_antenna: String,
+    #[clap(long, default_value = "10.10.23.1")]
+    sdr_ip: String,
 }
 
 fn main() -> Result<()> {
@@ -48,7 +58,8 @@ fn main() -> Result<()> {
     let iq_delay = fg.add_block(IqDelay::new());
     let soapy_snk = fg.add_block(
         SoapySinkBuilder::new()
-            .filter("uhd,type=x300,addr=10.10.23.1,subdev=A:0")
+            .filter(format!("uhd,type=x300,addr={}", args.sdr_ip))
+            .antenna(args.tx_antenna)
             .freq(tx_freq)
             .sample_rate(4e6)
             .gain(args.tx_gain)
@@ -64,8 +75,9 @@ fn main() -> Result<()> {
     // ========================================
     let src = fg.add_block(
         SoapySourceBuilder::new()
-            .filter("uhd,type=x300,addr=10.10.23.1,subdev=B:0")
+            .filter(format!("uhd,type=x300,addr={}", args.sdr_ip))
             .freq(rx_freq)
+            .antenna(args.rx_antenna)
             .sample_rate(4e6)
             .gain(args.rx_gain)
             .build(),
@@ -104,22 +116,24 @@ fn main() -> Result<()> {
     let rt = Runtime::new();
     let (fg, mut handle) = rt.start(fg);
 
-    // send a message every 0.8 seconds
-    let mut seq = 0u64;
-    rt.spawn_background(async move {
-        loop {
-            Timer::after(Duration::from_secs_f32(0.1)).await;
-            handle
-                .call(
-                    0, // mac block
-                    1, // tx handler
-                    Pmt::Blob(format!("FFFFFFFFFFFFFFFFFFFFutureSDR {}", seq).as_bytes().to_vec()),
-                )
-                .await
-                .unwrap();
-            seq += 1;
-        }
-    });
+    // if tx_interval is set, send messages periodically
+    if let Some(tx_interval) = args.tx_interval {
+        let mut seq = 0u64;
+        rt.spawn_background(async move {
+            loop {
+                Timer::after(Duration::from_secs_f32(tx_interval)).await;
+                handle
+                    .call(
+                        0, // mac block
+                        1, // tx handler
+                        Pmt::Blob(format!("{} {}", args.tx_msg, seq).as_bytes().to_vec()),
+                    )
+                    .await
+                    .unwrap();
+                seq += 1;
+            }
+        });
+    }
 
     block_on(fg)?;
 
