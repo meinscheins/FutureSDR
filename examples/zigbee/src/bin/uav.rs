@@ -1,14 +1,20 @@
 use clap::Parser;
-use futuresdr::blocks::BlobToUdp;
+use futures::channel::mpsc;
+use futures::channel::oneshot;
+use futures::StreamExt;
 use std::time::Duration;
 
 use futuresdr::anyhow::Result;
 use futuresdr::async_io::block_on;
 use futuresdr::async_io::Timer;
+use futuresdr::async_net::SocketAddr;
 use futuresdr::async_net::UdpSocket;
 use futuresdr::blocks::Apply;
+use futuresdr::blocks::MessagePipe;
 use futuresdr::blocks::SoapySinkBuilder;
 use futuresdr::blocks::SoapySourceBuilder;
+use futuresdr::log::info;
+use futuresdr::log::warn;
 use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
@@ -48,14 +54,18 @@ struct Args {
     sdr_ip: String,
     /// local UDP port to receive messages to send
     #[clap(long)]
-    rx_port: Option<u32>,
+    local_port: Option<u32>,
     /// remote UDP server to forward received messages to
     #[clap(long)]
-    tx_forward: Option<String>,
+    remote_udp: Option<String>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.local_port.is_some() && args.remote_udp.is_some() {
+        eprintln!("local port and remote udp should not both be set");
+        std::process::exit(1);
+    }
     let tx_freq = channel_to_freq(args.tx_channel)?;
     let rx_freq = channel_to_freq(args.rx_channel)?;
     println!("Configuration: {:?}", args);
@@ -125,10 +135,9 @@ fn main() -> Result<()> {
     fg.connect_stream(mm, "out", decoder, "in")?;
     fg.connect_message(decoder, "out", mac, "rx")?;
 
-    if let Some(ref remote) = args.tx_forward {
-        let udp = fg.add_block(BlobToUdp::new(remote));
-        fg.connect_message(mac, "rxed", udp, "in")?;
-    }
+    let (sender, mut receiver) = mpsc::channel::<Pmt>(10);
+    let pipe = fg.add_block(MessagePipe::new(sender));
+    fg.connect_message(mac, "rxed", pipe, "in")?;
 
     let rt = Runtime::new();
     let (fg, mut handle) = rt.start(fg);
@@ -153,16 +162,31 @@ fn main() -> Result<()> {
         });
     }
 
-    if let Some(rx_port) = args.rx_port {
+    // we are the udp server
+    if let Some(port) = args.local_port {
+        let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
+        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", port))).unwrap();
+        let socket2 = socket.clone();
+
         rt.spawn_background(async move {
-            let socket = UdpSocket::bind(format!("0.0.0.0:{}", rx_port))
+            let mut buf = vec![0u8; 1024];
+
+            let (n, e) = socket.recv_from(&mut buf).await.unwrap();
+            println!("udp received {} bytes", n);
+            handle2
+                .call(
+                    0, // mac block
+                    1, // tx handler
+                    Pmt::Blob(buf[0..n].to_vec()),
+                )
                 .await
                 .unwrap();
-            let mut buf = vec![0u8; 1024];
+
+            tx_endpoint.send(e).unwrap();
+
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                // println!("received from socket");
-                // println!("{:?}", &buf[0..n]);
+                println!("udp received {} bytes", n);
                 handle2
                     .call(
                         0, // mac block
@@ -171,6 +195,57 @@ fn main() -> Result<()> {
                     )
                     .await
                     .unwrap();
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint.await.unwrap();
+            info!("endpoint connected to local udp server {:?}", &endpoint);
+
+            loop {
+                if let Some(p) = receiver.next().await {
+                    if let Pmt::Blob(v) = p {
+                        socket2.send_to(&v, endpoint).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+    } else if let Some(remote) = args.remote_udp {
+        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", 0))).unwrap();
+        block_on(socket.connect(remote)).unwrap();
+        let socket2 = socket.clone();
+
+        rt.spawn_background(async move {
+            let mut buf = vec![0u8; 1024];
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                println!("udp received {} bytes", n);
+                handle2
+                    .call(
+                        0, // mac block
+                        1, // tx handler
+                        Pmt::Blob(buf[0..n].to_vec()),
+                    )
+                    .await
+                    .unwrap();
+            }
+        });
+
+        rt.spawn_background(async move {
+            loop {
+                if let Some(p) = receiver.next().await {
+                    if let Pmt::Blob(v) = p {
+                        socket2.send(&v).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+                }
             }
         });
     }

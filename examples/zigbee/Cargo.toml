@@ -24,6 +24,7 @@ name = "uav"
 path = "src/bin/uav.rs"
 
 [dependencies]
+futures = "0.3.21"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 futuresdr = { path = "../..", features = ["soapy"] }
