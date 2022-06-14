@@ -19,16 +19,11 @@ use futuresdr::runtime::Tag;
 use futuresdr::runtime::WorkIo;
 
 const MAX_FRAMES: usize = 128;
-const MAX_FRAME_SIZE: usize = 127;
-const FRAME_CONTROL: u16 = 0x8841;
-const DESTINATION_PAN: u16 = 0x1aaa;
-const DESTINATION_ADDRESS: u16 = 0xffff;
-const SOURCE_ADDRESS: u16 = 0x3344;
+const MAX_FRAME_SIZE: usize = 255;
 
 pub struct Mac {
     tx_frames: VecDeque<Vec<u8>>,
     current_frame: [u8; 256],
-    sequence_number: u8,
     current_index: usize,
     current_len: usize,
 }
@@ -41,15 +36,6 @@ impl Mac {
         b[2] = 0x0;
         b[3] = 0xa7;
         b[4] = 0x0; // len
-        b[5] = FRAME_CONTROL.to_le_bytes()[0];
-        b[6] = FRAME_CONTROL.to_le_bytes()[1];
-        b[7] = 0x0; // seq nr
-        b[8] = DESTINATION_PAN.to_le_bytes()[0];
-        b[9] = DESTINATION_PAN.to_le_bytes()[1];
-        b[10] = DESTINATION_ADDRESS.to_le_bytes()[0];
-        b[11] = DESTINATION_ADDRESS.to_le_bytes()[1];
-        b[12] = SOURCE_ADDRESS.to_le_bytes()[0];
-        b[13] = SOURCE_ADDRESS.to_le_bytes()[1];
 
         Block::new(
             BlockMetaBuilder::new("Mac").build(),
@@ -62,7 +48,6 @@ impl Mac {
             Mac {
                 tx_frames: VecDeque::new(),
                 current_frame: b,
-                sequence_number: 0,
                 current_index: 0,
                 current_len: 0,
             },
@@ -102,12 +87,13 @@ impl Mac {
     ) -> Pin<Box<dyn Future<Output = Result<Pmt>> + Send + 'a>> {
         async move {
             match p {
-                Pmt::Blob(data) => {
+                Pmt::Blob(mut data) => {
                     if Self::check_crc(&data) {
                         info!("received frame, crc correct, payload length {}", data.len());
                         let l = data.len();
+                        data.truncate(l-2);
                         let s = String::from_iter(
-                            data[9..l - 2]
+                            data
                                 .iter()
                                 .map(|x| char::from(*x))
                                 .map(|x| if x.is_ascii() { x } else { '.' })
@@ -120,7 +106,7 @@ impl Mac {
                                 }),
                         );
                         info!("{}", s);
-                        mio.output_mut(0).post(Pmt::Blob(data.clone())).await;
+                        mio.output_mut(0).post(Pmt::Blob(data)).await;
                     } else {
                         info!("crc wrong");
                     }
@@ -151,12 +137,12 @@ impl Mac {
                             MAX_FRAMES
                         );
                     } else {
-                        // 9 header + 2 crc
-                        if data.len() > MAX_FRAME_SIZE - 11 {
+                        // 2 crc
+                        if data.len() > MAX_FRAME_SIZE - 2 {
                             warn!(
                                 "ZigBee Mac: TX frame too large ({}, max {}). Dropping.",
                                 data.len(),
-                                MAX_FRAME_SIZE - 11
+                                MAX_FRAME_SIZE - 2
                             );
                         } else {
                             self.tx_frames.push_back(data);
@@ -189,23 +175,21 @@ impl Kernel for Mac {
         while !out.is_empty() {
             if self.current_len == 0 {
                 if let Some(v) = self.tx_frames.pop_front() {
-                    self.current_frame[4] = (v.len() + 11) as u8;
-                    self.current_frame[7] = self.sequence_number;
-                    self.sequence_number = self.sequence_number.wrapping_add(1);
+                    self.current_frame[4] = (v.len() + 2) as u8;
                     unsafe {
                         std::ptr::copy_nonoverlapping(
                             v.as_ptr(),
-                            self.current_frame.as_mut_ptr().add(14),
+                            self.current_frame.as_mut_ptr().add(5),
                             v.len(),
                         );
                     }
 
-                    let crc = Self::calc_crc(&self.current_frame[5..14 + v.len()]);
-                    self.current_frame[14 + v.len()] = crc.to_le_bytes()[0];
-                    self.current_frame[15 + v.len()] = crc.to_le_bytes()[1];
+                    let crc = Self::calc_crc(&self.current_frame[5..5 + v.len()]);
+                    self.current_frame[5 + v.len()] = crc.to_le_bytes()[0];
+                    self.current_frame[6 + v.len()] = crc.to_le_bytes()[1];
 
-                    // 4 preamble + 1 len + 9 header + 2 crc
-                    self.current_len = v.len() + 16;
+                    // 4 preamble + 1 len + 2 crc
+                    self.current_len = v.len() + 7;
                     self.current_index = 0;
                     sio.output(0).add_tag(0, Tag::Id(self.current_len as u64));
                     info!("sending frame, len {}", self.current_len);
