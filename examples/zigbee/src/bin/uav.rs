@@ -61,6 +61,9 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    env_logger::init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+    );
     let args = Args::parse();
     if args.local_port.is_some() && args.remote_udp.is_some() {
         eprintln!("local port and remote udp should not both be set");
@@ -68,7 +71,7 @@ fn main() -> Result<()> {
     }
     let tx_freq = channel_to_freq(args.tx_channel)?;
     let rx_freq = channel_to_freq(args.rx_channel)?;
-    println!("Configuration: {:?}", args);
+    info!("Configuration: {:?}", args);
 
     let mut fg = Flowgraph::new();
 
@@ -172,7 +175,6 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            println!("udp received {} bytes", n);
             handle2
                 .call(
                     0, // mac block
@@ -186,7 +188,6 @@ fn main() -> Result<()> {
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                println!("udp received {} bytes", n);
                 handle2
                     .call(
                         0, // mac block
@@ -223,7 +224,6 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                println!("udp received {} bytes", n);
                 handle2
                     .call(
                         0, // mac block
