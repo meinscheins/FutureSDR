@@ -31,32 +31,32 @@ use zigbee::Mac;
 #[clap(version)]
 struct Args {
     /// ZigBee channel for receiver (11..=26)
-    #[clap(long, default_value_t = 26)]
+    #[clap(long, default_value_t = 26, value_parser)]
     rx_channel: u32,
     /// ZigBee channel for transmitter (11..=26)
-    #[clap(long, default_value_t = 26)]
+    #[clap(long, default_value_t = 26, value_parser)]
     tx_channel: u32,
-    #[clap(long, default_value_t = 20.0)]
+    #[clap(long, default_value_t = 20.0, value_parser)]
     rx_gain: f64,
-    #[clap(long, default_value_t = 20.0)]
+    #[clap(long, default_value_t = 20.0, value_parser)]
     tx_gain: f64,
-    #[clap(long)]
+    #[clap(long, value_parser)]
     tx_interval: Option<f32>,
     /// Message that is sent if a tx-interval is set
-    #[clap(long, default_value = "FutureSDR")]
+    #[clap(long, default_value = "FutureSDR", value_parser)]
     tx_msg: String,
-    #[clap(long, default_value = "TX/RX")]
+    #[clap(long, default_value = "TX/RX", value_parser)]
     tx_antenna: String,
-    #[clap(long, default_value = "RX2")]
+    #[clap(long, default_value = "RX2", value_parser)]
     rx_antenna: String,
     /// X310 IP
-    #[clap(long, default_value = "10.10.23.1")]
+    #[clap(long, default_value = "10.10.23.1", value_parser)]
     sdr_ip: String,
     /// local UDP port to receive messages to send
-    #[clap(long)]
+    #[clap(long, value_parser)]
     local_port: Option<u32>,
     /// remote UDP server to forward received messages to
-    #[clap(long)]
+    #[clap(long, value_parser)]
     remote_udp: Option<String>,
 }
 
