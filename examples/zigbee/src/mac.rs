@@ -5,7 +5,7 @@ use std::pin::Pin;
 use futuresdr::anyhow::Result;
 use futuresdr::async_trait::async_trait;
 use futuresdr::futures::FutureExt;
-use futuresdr::log::{info, debug, warn};
+use futuresdr::log::{debug, info, warn};
 use futuresdr::runtime::Block;
 use futuresdr::runtime::BlockMeta;
 use futuresdr::runtime::BlockMetaBuilder;
@@ -91,10 +91,9 @@ impl Mac {
                     if Self::check_crc(&data) {
                         info!("received frame, crc correct, payload length {}", data.len());
                         let l = data.len();
-                        data.truncate(l-2);
+                        data.truncate(l - 2);
                         let s = String::from_iter(
-                            data
-                                .iter()
+                            data.iter()
                                 .map(|x| char::from(*x))
                                 .map(|x| if x.is_ascii() { x } else { '.' })
                                 .map(|x| {
@@ -170,8 +169,7 @@ impl Kernel for Mac {
         _m: &mut MessageIo<Self>,
         _b: &mut BlockMeta,
     ) -> Result<()> {
-
-        loop{
+        loop {
             let out = sio.output(0).slice::<u8>();
             if out.is_empty() {
                 break;
