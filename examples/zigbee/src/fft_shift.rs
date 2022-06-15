@@ -1,8 +1,8 @@
-use std::marker::PhantomData;
 use std::mem::size_of;
 
 use futuresdr::anyhow::Result;
 use futuresdr::async_trait::async_trait;
+use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::Block;
 use futuresdr::runtime::BlockMeta;
 use futuresdr::runtime::BlockMetaBuilder;
@@ -13,27 +13,25 @@ use futuresdr::runtime::StreamIo;
 use futuresdr::runtime::StreamIoBuilder;
 use futuresdr::runtime::WorkIo;
 
-pub struct FftShift<T> {
-    _p: PhantomData<T>,
-}
+pub struct FftShift;
 
-impl<T: Copy + Send + 'static> FftShift<T> {
+impl FftShift {
     #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Block {
         Block::new(
             BlockMetaBuilder::new("FftShift").build(),
             StreamIoBuilder::new()
-                .add_input("in", size_of::<T>())
-                .add_output("out", size_of::<T>())
+                .add_input("in", size_of::<Complex32>())
+                .add_output("out", size_of::<f32>())
                 .build(),
             MessageIoBuilder::new().build(),
-            Self { _p: PhantomData },
+            Self,
         )
     }
 }
 
 #[async_trait]
-impl<T: Copy + Send + 'static> Kernel for FftShift<T> {
+impl Kernel for FftShift {
     async fn work(
         &mut self,
         io: &mut WorkIo,
@@ -41,15 +39,15 @@ impl<T: Copy + Send + 'static> Kernel for FftShift<T> {
         _mio: &mut MessageIo<Self>,
         _meta: &mut BlockMeta,
     ) -> Result<()> {
-        let input = sio.input(0).slice::<T>();
-        let output = sio.output(0).slice::<T>();
+        let input = sio.input(0).slice::<Complex32>();
+        let output = sio.output(0).slice::<f32>();
 
         let n = std::cmp::min(input.len(), output.len()) / 2048;
 
         for i in 0..n {
             for k in 0..2048 {
                 let m = (k + 1024) % 2048;
-                output[i * 2048 + m] = input[i * 2048 + k]
+                output[i * 2048 + m] = 10.0 * (input[i * 2048 + k]).norm().log10();
             }
         }
 
