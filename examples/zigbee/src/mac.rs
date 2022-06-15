@@ -5,7 +5,7 @@ use std::pin::Pin;
 use futuresdr::anyhow::Result;
 use futuresdr::async_trait::async_trait;
 use futuresdr::futures::FutureExt;
-use futuresdr::log::{debug, info, warn};
+use futuresdr::log::{debug, warn};
 use futuresdr::runtime::Block;
 use futuresdr::runtime::BlockMeta;
 use futuresdr::runtime::BlockMetaBuilder;
@@ -26,6 +26,8 @@ pub struct Mac {
     current_frame: [u8; 256],
     current_index: usize,
     current_len: usize,
+    n_received: u64,
+    n_sent: u64,
 }
 
 impl Mac {
@@ -43,6 +45,7 @@ impl Mac {
             MessageIoBuilder::new()
                 .add_input("rx", Self::received)
                 .add_input("tx", Self::transmit)
+                .add_input("stats", Self::stats)
                 .add_output("rxed")
                 .build(),
             Mac {
@@ -50,6 +53,8 @@ impl Mac {
                 current_frame: b,
                 current_index: 0,
                 current_len: 0,
+                n_received: 0,
+                n_sent: 0,
             },
         )
     }
@@ -88,8 +93,9 @@ impl Mac {
         async move {
             match p {
                 Pmt::Blob(mut data) => {
-                    if Self::check_crc(&data) {
-                        info!("received frame, crc correct, payload length {}", data.len());
+                    if Self::check_crc(&data) && data.len() > 2 {
+                        debug!("received frame, crc correct, payload length {}", data.len());
+                        self.n_received += 1;
                         let l = data.len();
                         data.truncate(l - 2);
                         let s = String::from_iter(
@@ -158,6 +164,18 @@ impl Mac {
         }
         .boxed()
     }
+
+    fn stats<'a>(
+        &'a mut self,
+        _mio: &'a mut MessageIo<Mac>,
+        _meta: &'a mut BlockMeta,
+        _p: Pmt,
+    ) -> Pin<Box<dyn Future<Output = Result<Pmt>> + Send + 'a>> {
+        async move {
+            Ok(Pmt::VecU64(vec![self.n_sent, self.n_received]))
+        }
+        .boxed()
+    }
 }
 
 #[async_trait]
@@ -194,7 +212,8 @@ impl Kernel for Mac {
                     self.current_len = v.len() + 7;
                     self.current_index = 0;
                     sio.output(0).add_tag(0, Tag::Id(self.current_len as u64));
-                    info!("sending frame, len {}", self.current_len);
+                    debug!("sending frame, len {}", self.current_len);
+                    self.n_sent += 1;
                     debug!("{:?}", &self.current_frame[0..self.current_len]);
                 } else {
                     break;
