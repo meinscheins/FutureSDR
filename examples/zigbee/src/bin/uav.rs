@@ -21,7 +21,6 @@ use futuresdr::log::info;
 use futuresdr::log::warn;
 use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::config;
-use futuresdr::runtime::Block;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
@@ -34,14 +33,6 @@ use zigbee::FftShift;
 use zigbee::IqDelay;
 use zigbee::Keep1InN;
 use zigbee::Mac;
-
-pub fn lin2db_block() -> Block {
-    Apply::new(|x: &f32| 10.0 * x.log10())
-}
-
-pub fn power_block() -> Block {
-    Apply::new(|x: &Complex32| x.norm())
-}
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -82,9 +73,12 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    env_logger::init_from_env(
+    env_logger::Builder::from_env(
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
-    );
+    )
+    .target(env_logger::Target::Stdout)
+    .init();
+
     let args = Args::parse();
     if args.local_port.is_some() && args.remote_udp.is_some() {
         eprintln!("local port and remote udp should not both be set");
@@ -166,20 +160,19 @@ fn main() -> Result<()> {
     // Spectrum
     // ========================================
     if args.spectrum {
-        let snk = WebsocketSinkBuilder::<f32>::new(9001)
-            .mode(WebsocketSinkMode::FixedDropping(2048))
-            .build();
+        let snk = fg.add_block(
+            WebsocketSinkBuilder::<f32>::new(9001)
+                .mode(WebsocketSinkMode::FixedDropping(2048))
+                .build(),
+        );
         let fft = fg.add_block(Fft::new());
-        let power = fg.add_block(power_block());
-        let log = fg.add_block(lin2db_block());
-        let shift = fg.add_block(FftShift::<f32>::new());
-        let keep = fg.add_block(Keep1InN::new(0.1, 10));
-        let snk = fg.add_block(snk);
+        let shift = fg.add_block(FftShift::new());
+        let keep = fg.add_block(Keep1InN::new(0.5, 10));
+        let cpy = fg.add_block(futuresdr::blocks::Copy::<Complex32>::new());
 
-        fg.connect_stream(src, "out", fft, "in")?;
-        fg.connect_stream(fft, "out", power, "in")?;
-        fg.connect_stream(power, "out", log, "in")?;
-        fg.connect_stream(log, "out", shift, "in")?;
+        fg.connect_stream(src, "out", cpy, "in")?;
+        fg.connect_stream(cpy, "out", fft, "in")?;
+        fg.connect_stream(fft, "out", shift, "in")?;
         fg.connect_stream(shift, "out", keep, "in")?;
         fg.connect_stream(keep, "out", snk, "in")?;
     }
@@ -239,7 +232,7 @@ fn main() -> Result<()> {
                     last = now;
 
                     info!(
-                        "stats: txed {}  total {}  rate {}  rxed {} total {}  rate {}",
+                        "stats: txed {:4}  total {:6}  rate {:4.4}  rxed {:4} total {:6}  rate {:4.4}",
                         tx,
                         last_tx,
                         tx as f32 / diff,
