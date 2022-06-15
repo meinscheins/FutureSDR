@@ -35,28 +35,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
 <title>..:: FutureSDR ::..</title>
-
-<script type="module">
-    import init, {add_slider_u32} from "./futuresdr.js"
-
-    const runWasm = async () => {
-        const rustWasm = await init();
-        add_slider_u32("#freq_slider", "http://localhost:1337", 0, 0, 800000000, 900000000, 1000000);
-    };
-
-    runWasm();
-</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap" rel="stylesheet">
 
 <style type="text/css">
  body {
-     background: url('interface.png');
-     background-position: center;
-     background-repeat: no-repeat;
-     background-size: 100% 100%;
-     height: 100vh !important;
-     width: 100vw !important;
-     margin: 0;
-     color: #666;
+     background-color: #f0fff4;
+     font-family: 'Inter', sans-serif;
  }
  #container {
      width: 100%;
@@ -102,15 +88,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
      margin: 1.5vh auto;
      width: 100%;
      text-align: center;
-     font-size: 6vh;
+     font-weight: 700;
  }
  canvas {
      position: absolute;
-     margin-left: 30vw;
-     margin-top: 30vh;
+     margin-left: 15vw;
+     margin-top: 15vh;
      display: block;
-     width: 40vw;
-     height: 40vh;
+     width: 70vw;
+     height: 70vh;
      z-index: 10;
  }
   #slider { margin: 10px; }
@@ -141,12 +127,13 @@ Number.prototype.clamp = function(min, max) {
  function init() {
      analyserView1 = new AnalyserView("view1");
 
-     var ws = new WebSocket("ws://127.0.0.1:9001");
+     var ws = new WebSocket("ws://10.10.11.107:9001");
      ws.onmessage = function (event) {
          new Response(event.data).arrayBuffer()
                                  .then(function (buff) {
                                      var data = new Float32Array(buff);
-                                     var min = -10;
+                                     /* console.log(data); */
+                                     var min = -30;
                                      var max = 10;
                                      var i;
                                      for (i = 0; i < 2048; i++) {
@@ -167,10 +154,12 @@ Number.prototype.clamp = function(min, max) {
 </head>
 
 <body>
+    <div id="header">
+        <img src="eclogo.svg">
+    </div>
     <div id="container">
         <canvas id="view1"></canvas>
-        <h1> ..:: FutureSDR ::.. </h1>
-        <div id="freq_slider"></div>
+        <h1>Ground Station :: RX Spectrum</h1>
     </div>
 </body>
 </html>
