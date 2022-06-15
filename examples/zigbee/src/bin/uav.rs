@@ -189,7 +189,7 @@ fn main() -> Result<()> {
     fg.connect_message(mac, "rxed", pipe, "in")?;
 
     let rt = Runtime::new();
-    let (fg, handle) = rt.start(fg);
+    let (fg, mut handle) = rt.start(fg);
 
     // if tx_interval is set, send messages periodically
     if let Some(tx_interval) = args.tx_interval {
@@ -228,29 +228,26 @@ fn main() -> Result<()> {
                     )
                     .await
                     .unwrap();
-                match p {
-                    Pmt::VecU64(v) => {
-                        let tx = v[0] - last_tx;
-                        let rx = v[1] - last_rx;
-                        last_tx = v[0];
-                        last_rx = v[1];
+                if let Pmt::VecU64(v) = p {
+                    let tx = v[0] - last_tx;
+                    let rx = v[1] - last_rx;
+                    last_tx = v[0];
+                    last_rx = v[1];
 
-                        let now = Instant::now();
-                        let diff = (now - last).as_secs_f32();
-                        last = now;
+                    let now = Instant::now();
+                    let diff = (now - last).as_secs_f32();
+                    last = now;
 
-                        info!(
-                            "stats: txed {}  total {}  rate {}  rxed {} total {}  rate {}",
-                            tx,
-                            last_tx,
-                            tx as f32 / diff,
-                            rx,
-                            last_rx,
-                            rx as f32 / diff
-                        );
-                    }
-                    _ => {}
-                }
+                    info!(
+                        "stats: txed {}  total {}  rate {}  rxed {} total {}  rate {}",
+                        tx,
+                        last_tx,
+                        tx as f32 / diff,
+                        rx,
+                        last_rx,
+                        rx as f32 / diff
+                    );
+                };
             }
         });
     }
@@ -260,13 +257,12 @@ fn main() -> Result<()> {
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
         let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", port))).unwrap();
         let socket2 = socket.clone();
-        let mut myhandle = handle.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            myhandle
+            handle
                 .call(
                     0, // mac block
                     1, // tx handler
@@ -279,7 +275,7 @@ fn main() -> Result<()> {
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                myhandle
+                handle
                     .call(
                         0, // mac block
                         1, // tx handler
@@ -310,13 +306,12 @@ fn main() -> Result<()> {
         let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
-        let mut myhandle = handle.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                myhandle
+                handle
                     .call(
                         0, // mac block
                         1, // tx handler
