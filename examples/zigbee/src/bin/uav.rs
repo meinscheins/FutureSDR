@@ -20,8 +20,8 @@ use futuresdr::blocks::WebsocketSinkMode;
 use futuresdr::log::info;
 use futuresdr::log::warn;
 use futuresdr::num_complex::Complex32;
-use futuresdr::runtime::Block;
 use futuresdr::runtime::config;
+use futuresdr::runtime::Block;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
@@ -30,9 +30,9 @@ use zigbee::channel_to_freq;
 use zigbee::modulator;
 use zigbee::ClockRecoveryMm;
 use zigbee::Decoder;
-use zigbee::Keep1InN;
 use zigbee::FftShift;
 use zigbee::IqDelay;
+use zigbee::Keep1InN;
 use zigbee::Mac;
 
 pub fn lin2db_block() -> Block {
@@ -238,10 +238,18 @@ fn main() -> Result<()> {
                         let now = Instant::now();
                         let diff = (now - last).as_secs_f32();
                         last = now;
-                        
-                        info!("stats: txed {}  total {}  rate {}  rxed {} total {}  rate {}", tx, last_tx, tx as f32 / diff, rx, last_rx, rx as f32 / diff);
-                    },
-                    _ => {},
+
+                        info!(
+                            "stats: txed {}  total {}  rate {}  rxed {} total {}  rate {}",
+                            tx,
+                            last_tx,
+                            tx as f32 / diff,
+                            rx,
+                            last_rx,
+                            rx as f32 / diff
+                        );
+                    }
+                    _ => {}
                 }
             }
         });

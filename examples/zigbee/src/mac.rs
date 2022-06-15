@@ -171,10 +171,7 @@ impl Mac {
         _meta: &'a mut BlockMeta,
         _p: Pmt,
     ) -> Pin<Box<dyn Future<Output = Result<Pmt>> + Send + 'a>> {
-        async move {
-            Ok(Pmt::VecU64(vec![self.n_sent, self.n_received]))
-        }
-        .boxed()
+        async move { Ok(Pmt::VecU64(vec![self.n_sent, self.n_received])) }.boxed()
     }
 }
 
