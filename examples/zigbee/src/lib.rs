@@ -5,8 +5,14 @@ pub use clock_recovery_mm::ClockRecoveryMm;
 mod decoder;
 pub use decoder::Decoder;
 
+mod fft_shift;
+pub use fft_shift::FftShift;
+
 mod iq_delay;
 pub use iq_delay::IqDelay;
+
+mod keep_1_in_n;
+pub use keep_1_in_n::Keep1InN;
 
 mod mac;
 pub use mac::Mac;
