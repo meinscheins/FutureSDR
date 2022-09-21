@@ -165,7 +165,7 @@ fn main() -> Result<()> {
                 .mode(WebsocketSinkMode::FixedDropping(2048))
                 .build(),
         );
-        let fft = fg.add_block(Fft::new());
+        let fft = fg.add_block(Fft::new(2048));
         let shift = fg.add_block(FftShift::new());
         let keep = fg.add_block(Keep1InN::new(0.5, 10));
         let cpy = fg.add_block(futuresdr::blocks::Copy::<Complex32>::new());
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
     fg.connect_message(mac, "rxed", pipe, "in")?;
 
     let rt = Runtime::new();
-    let (fg, mut handle) = rt.start(fg);
+    let (fg, mut handle) = futuresdr::async_io::block_on(rt.start(fg));
 
     // if tx_interval is set, send messages periodically
     if let Some(tx_interval) = args.tx_interval {
