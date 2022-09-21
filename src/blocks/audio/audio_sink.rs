@@ -17,6 +17,7 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
+/// Audio Sink.
 #[allow(clippy::type_complexity)]
 pub struct AudioSink {
     sample_rate: u32,
@@ -31,6 +32,7 @@ pub struct AudioSink {
 unsafe impl Send for AudioSink {}
 
 const QUEUE_SIZE: usize = 5;
+const STANDARD_RATES: [u32; 4] = [24000, 44100, 48000, 96000];
 
 impl AudioSink {
     #[allow(clippy::new_ret_no_self)]
@@ -49,8 +51,44 @@ impl AudioSink {
             },
         )
     }
+
+    pub fn default_sample_rate() -> Option<u32> {
+        Some(
+            cpal::default_host()
+                .default_output_device()?
+                .default_output_config()
+                .ok()?
+                .sample_rate()
+                .0,
+        )
+    }
+
+    pub fn supported_sample_rates() -> Vec<u32> {
+        if let Some(d) = cpal::default_host().default_output_device() {
+            if let Ok(configs) = d.supported_output_configs() {
+                let mut v = Vec::new();
+                for c in configs {
+                    let min = c.min_sample_rate().0;
+                    let max = c.max_sample_rate().0;
+                    if min >= 10000 {
+                        v.push(min);
+                    }
+                    if max >= 10000 {
+                        v.push(max);
+                    }
+
+                    v.extend(STANDARD_RATES.iter().filter(|x| *x >= &min && *x <= &max));
+                }
+                v.sort();
+                v.dedup();
+                return v;
+            }
+        }
+        Vec::new()
+    }
 }
 
+#[doc(hidden)]
 #[async_trait]
 impl Kernel for AudioSink {
     async fn init(

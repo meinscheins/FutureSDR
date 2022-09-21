@@ -11,22 +11,28 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
-pub struct Split<A, B, C>
+/// Apply a function to split a stream.
+pub struct Split<F, A, B, C>
 where
-    A: 'static,
-    B: 'static,
-    C: 'static,
+    F: FnMut(&A) -> (B, C) + Send + 'static,
+    A: Send + 'static,
+    B: Send + 'static,
+    C: Send + 'static,
 {
-    f: Box<dyn FnMut(&A) -> (B, C) + Send + 'static>,
+    f: F,
+    _p1: std::marker::PhantomData<A>,
+    _p2: std::marker::PhantomData<B>,
+    _p3: std::marker::PhantomData<C>,
 }
 
-impl<A, B, C> Split<A, B, C>
+impl<F, A, B, C> Split<F, A, B, C>
 where
-    A: 'static,
-    B: 'static,
-    C: 'static,
+    F: FnMut(&A) -> (B, C) + Send + 'static,
+    A: Send + 'static,
+    B: Send + 'static,
+    C: Send + 'static,
 {
-    pub fn new(f: impl FnMut(&A) -> (B, C) + Send + 'static) -> Block {
+    pub fn new(f: F) -> Block {
         Block::new(
             BlockMetaBuilder::new("Split").build(),
             StreamIoBuilder::new()
@@ -34,18 +40,25 @@ where
                 .add_output("out0", mem::size_of::<B>())
                 .add_output("out1", mem::size_of::<C>())
                 .build(),
-            MessageIoBuilder::<Split<A, B, C>>::new().build(),
-            Split { f: Box::new(f) },
+            MessageIoBuilder::<Self>::new().build(),
+            Split {
+                f,
+                _p1: std::marker::PhantomData,
+                _p2: std::marker::PhantomData,
+                _p3: std::marker::PhantomData,
+            },
         )
     }
 }
 
+#[doc(hidden)]
 #[async_trait]
-impl<A, B, C> Kernel for Split<A, B, C>
+impl<F, A, B, C> Kernel for Split<F, A, B, C>
 where
-    A: 'static,
-    B: 'static,
-    C: 'static,
+    F: FnMut(&A) -> (B, C) + Send + 'static,
+    A: Send + 'static,
+    B: Send + 'static,
+    C: Send + 'static,
 {
     async fn work(
         &mut self,

@@ -39,7 +39,7 @@ fn main() -> Result<()> {
         SoapySinkBuilder::new()
             .freq(freq)
             .sample_rate(4e6)
-            .gain(18.0)
+            .gain(28.0)
             .build(),
     );
 
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     fg.connect_stream(iq_delay, "out", soapy_snk, "in")?;
 
     let rt = Runtime::new();
-    let (fg, mut handle) = rt.start(fg);
+    let (fg, mut handle) = block_on(rt.start(fg));
 
     let mut seq = 0u64;
     rt.spawn_background(async move {

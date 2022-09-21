@@ -11,7 +11,7 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
-/// Applies a function to filter a stream
+/// Apply a function, returning an [Option] to allow filtering samples.
 ///
 /// # Inputs
 ///
@@ -37,6 +37,7 @@ use crate::runtime::WorkIo;
 ///     }
 /// }));
 /// ```
+#[allow(clippy::type_complexity)]
 pub struct Filter<A, B>
 where
     A: 'static,
@@ -63,6 +64,7 @@ where
     }
 }
 
+#[doc(hidden)]
 #[async_trait]
 impl<A, B> Kernel for Filter<A, B>
 where

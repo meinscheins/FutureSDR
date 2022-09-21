@@ -1,22 +1,21 @@
-#[cfg(feature = "cpal")]
+//! ## Audio Blocks
+#[cfg(feature = "audio")]
 mod audio_sink;
-#[cfg(feature = "cpal")]
+#[cfg(feature = "audio")]
 pub use audio_sink::AudioSink;
-#[cfg(feature = "cpal")]
+#[cfg(feature = "audio")]
 mod audio_source;
-#[cfg(feature = "cpal")]
+#[cfg(feature = "audio")]
 pub use audio_source::AudioSource;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "rodio"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "audio"))]
 mod file_source;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rodio"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "audio"))]
 pub use file_source::FileSource;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rodio"))]
 mod oscillator;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rodio"))]
 pub use oscillator::Oscillator;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "hound"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "audio"))]
 mod wav_sink;
-#[cfg(all(not(target_arch = "wasm32"), feature = "hound"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "audio"))]
 pub use wav_sink::WavSink;

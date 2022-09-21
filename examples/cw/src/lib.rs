@@ -5,7 +5,7 @@ use futuresdr::blocks::ApplyIntoIter;
 use futuresdr::blocks::Combine;
 #[cfg(not(target_arch = "wasm32"))]
 use futuresdr::blocks::ConsoleSink;
-use futuresdr::blocks::VectorSourceBuilder;
+use futuresdr::blocks::VectorSource;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Runtime;
 use std::fmt;
@@ -70,6 +70,15 @@ fn morse(i: &char) -> Vec<CWAlphabet> {
         '7' => vec![Dash, Dash, Dot, Dot, Dot, LetterSpace],
         '8' => vec![Dash, Dash, Dash, Dot, Dot, LetterSpace],
         '9' => vec![Dash, Dash, Dash, Dash, Dot, LetterSpace],
+        '.' => vec![Dot, Dash, Dot, Dash, Dot, Dash, LetterSpace],
+        ',' => vec![Dash, Dash, Dot, Dot, Dash, Dash, LetterSpace],
+        '?' => vec![Dot, Dot, Dash, Dash, Dot, Dot, LetterSpace],
+        ';' => vec![Dash, Dot, Dash, Dot, Dash, Dot, LetterSpace],
+        ':' => vec![Dash, Dash, Dash, Dot, Dot, Dot, LetterSpace],
+        '-' => vec![Dash, Dot, Dot, Dot, Dot, Dash, LetterSpace],
+        '/' => vec![Dash, Dot, Dot, Dash, Dot, LetterSpace],
+        '"' => vec![Dot, Dash, Dot, Dot, Dash, Dot, LetterSpace],
+        '\'' => vec![Dot, Dash, Dash, Dash, Dot, LetterSpace],
         _ => vec![WordSpace],
     }
 }
@@ -119,13 +128,11 @@ pub async fn run_fg_impl(msg: String) -> Result<()> {
     let msg: Vec<char> = msg.to_uppercase().chars().collect();
 
     let mut fg = Flowgraph::new();
-    let src = fg.add_block(VectorSourceBuilder::<char>::new(msg).build());
+    let src = fg.add_block(VectorSource::<char>::new(msg));
     let audio_snk = fg.add_block(AudioSink::new(SAMPLE_RATE.try_into().unwrap(), 1));
-    let morse = fg.add_block(ApplyIntoIter::<char, Vec<CWAlphabet>>::new(&morse));
-    let switch_command = fg.add_block(ApplyIntoIter::<CWAlphabet, CWAlphabet>::new(
-        |c: &CWAlphabet| *c,
-    ));
-    let sidetone_src = fg.add_block(Oscillator::new(SIDETONE_FREQ, 0.2));
+    let morse = fg.add_block(ApplyIntoIter::<_, _, Vec<CWAlphabet>>::new(&morse));
+    let switch_command = fg.add_block(ApplyIntoIter::<_, _, CWAlphabet>::new(|c: &CWAlphabet| *c));
+    let sidetone_src = fg.add_block(Oscillator::new(SIDETONE_FREQ, 0.2, SAMPLE_RATE as f32));
     let switch_sidetone = fg.add_block(Combine::new(|a: &f32, b: &f32| -> f32 { *a * *b }));
 
     fg.connect_stream(src, "out", morse, "in")?;

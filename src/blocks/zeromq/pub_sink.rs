@@ -9,6 +9,7 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
+/// Push samples into [ZeroMQ](https://zeromq.org/) socket.
 pub struct PubSink {
     item_size: usize,
     address: String,
@@ -16,20 +17,21 @@ pub struct PubSink {
 }
 
 impl PubSink {
-    pub fn new(item_size: usize, address: &str) -> Block {
+    pub fn new(item_size: usize, address: impl Into<String>) -> Block {
         Block::new(
             BlockMetaBuilder::new("PubSink").blocking().build(),
             StreamIoBuilder::new().add_input("in", item_size).build(),
             MessageIoBuilder::new().build(),
             PubSink {
                 item_size,
-                address: address.to_string(),
+                address: address.into(),
                 publisher: None,
             },
         )
     }
 }
 
+#[doc(hidden)]
 #[async_trait]
 impl Kernel for PubSink {
     async fn work(
@@ -44,7 +46,7 @@ impl Kernel for PubSink {
 
         let n = i.len() / self.item_size;
         if n > 0 {
-            self.publisher.as_mut().unwrap().send(&*i, 0).unwrap();
+            self.publisher.as_mut().unwrap().send(i, 0).unwrap();
             sio.input(0).consume(n);
         }
 
@@ -71,6 +73,7 @@ impl Kernel for PubSink {
     }
 }
 
+/// Build a ZeroMQ [PubSink].
 pub struct PubSinkBuilder {
     item_size: usize,
     address: String,
@@ -90,7 +93,7 @@ impl PubSinkBuilder {
         self
     }
 
-    pub fn build(&mut self) -> Block {
-        PubSink::new(self.item_size, &*self.address)
+    pub fn build(self) -> Block {
+        PubSink::new(self.item_size, self.address)
     }
 }

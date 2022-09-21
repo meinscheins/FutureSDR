@@ -9,6 +9,7 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
+/// Read samples from [ZeroMQ](https://zeromq.org/) socket.
 pub struct SubSource {
     item_size: usize,
     address: String,
@@ -16,20 +17,21 @@ pub struct SubSource {
 }
 
 impl SubSource {
-    pub fn new(item_size: usize, address: &str) -> Block {
+    pub fn new(item_size: usize, address: impl Into<String>) -> Block {
         Block::new(
             BlockMetaBuilder::new("SubSource").blocking().build(),
             StreamIoBuilder::new().add_output("out", item_size).build(),
             MessageIoBuilder::new().build(),
             SubSource {
                 item_size,
-                address: address.to_string(),
+                address: address.into(),
                 receiver: None,
             },
         )
     }
 }
 
+#[doc(hidden)]
 #[async_trait]
 impl Kernel for SubSource {
     async fn work(
@@ -68,6 +70,7 @@ impl Kernel for SubSource {
     }
 }
 
+/// Build a ZeroMQ [SubSource].
 pub struct SubSourceBuilder {
     item_size: usize,
     address: String,
@@ -87,7 +90,7 @@ impl SubSourceBuilder {
         self
     }
 
-    pub fn build(&mut self) -> Block {
-        SubSource::new(self.item_size, &*self.address)
+    pub fn build(self) -> Block {
+        SubSource::new(self.item_size, self.address)
     }
 }

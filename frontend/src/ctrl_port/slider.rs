@@ -41,7 +41,7 @@ pub enum Msg {
     Reply(String, u64),
 }
 
-#[derive(Clone, Properties, PartialEq)]
+#[derive(Clone, Properties, PartialEq, Eq)]
 pub struct Props {
     pub url: String,
     pub block: u32,
@@ -98,7 +98,7 @@ impl Slider {
                 let v = u64::try_from(value).ok()?;
                 Some(Pmt::U64(v))
             }
-            PmtKind::Double => Some(Pmt::Double(value as f64)),
+            PmtKind::F64 => Some(Pmt::F64(value as f64)),
             _ => None,
         }
     }

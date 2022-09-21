@@ -25,8 +25,8 @@ impl BlockMeta {
         self.blocking
     }
 
-    pub fn set_instance_name(&mut self, name: &str) {
-        self.instance_name = Some(name.to_string());
+    pub fn set_instance_name(&mut self, name: impl Into<String>) {
+        self.instance_name = Some(name.into());
     }
 }
 
@@ -36,9 +36,9 @@ pub struct BlockMetaBuilder {
 }
 
 impl BlockMetaBuilder {
-    pub fn new(name: &str) -> BlockMetaBuilder {
+    pub fn new(name: impl Into<String>) -> BlockMetaBuilder {
         BlockMetaBuilder {
-            name: name.to_string(),
+            name: name.into(),
             blocking: false,
         }
     }

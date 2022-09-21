@@ -16,7 +16,7 @@ use crate::runtime::StreamIo;
 use crate::runtime::StreamIoBuilder;
 use crate::runtime::WorkIo;
 
-/// [`soapysdr::Device`] source block
+/// Receive samples from a Soapy SDR device.
 ///
 /// # Inputs
 /// * **Message**: `freq`: set the SDR's frequency; accepts a [`Pmt::U32`] value
@@ -66,6 +66,15 @@ impl SoapySource {
                                     *f as f64,
                                     (),
                                 )?;
+                            } else if let Pmt::F64(ref f) = &p {
+                                block.dev.as_mut().context("no dev")?.set_frequency(
+                                    Rx,
+                                    0,
+                                    *f,
+                                    (),
+                                )?;
+                            } else {
+                                warn!("SoapySource/freq Handler received wrong PMT {:?}", &p);
                             }
                             Ok(p)
                         }
@@ -105,6 +114,7 @@ impl SoapySource {
     }
 }
 
+#[doc(hidden)]
 #[async_trait]
 impl Kernel for SoapySource {
     async fn work(
@@ -167,7 +177,7 @@ impl Kernel for SoapySource {
 
 unsafe impl Sync for SoapySource {}
 
-/// Read samples from a SoapySDR source
+/// Build a [SoapySource].
 ///
 /// # Inputs
 ///

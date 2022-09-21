@@ -3,17 +3,16 @@ use axum::http::StatusCode;
 use axum::routing::{get, get_service, post};
 use axum::Json;
 use axum::Router;
-use futures::channel::mpsc;
-use futures::channel::oneshot;
-use futures::prelude::*;
-use slab::Slab;
 use std::path;
 use tower_http::add_extension::AddExtensionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
+pub use futuresdr_pmt::BlockDescription;
+pub use futuresdr_pmt::FlowgraphDescription;
+
 use crate::runtime::config;
-use crate::runtime::AsyncMessage;
+use crate::runtime::FlowgraphHandle;
 use crate::runtime::Pmt;
 
 macro_rules! relative {
@@ -26,70 +25,65 @@ macro_rules! relative {
     };
 }
 
-async fn index(Extension(boxes): Extension<Slab<Option<mpsc::Sender<AsyncMessage>>>>) -> String {
-    format!("number of Blocks {:?}", boxes.len())
+async fn flowgraph_description(
+    Extension(mut flowgraph): Extension<FlowgraphHandle>,
+) -> Result<Json<FlowgraphDescription>, StatusCode> {
+    if let Ok(d) = flowgraph.description().await {
+        Ok(Json::from(d))
+    } else {
+        Err(StatusCode::BAD_REQUEST)
+    }
+}
+
+async fn block_description(
+    Path(blk): Path<usize>,
+    Extension(mut flowgraph): Extension<FlowgraphHandle>,
+) -> Result<Json<BlockDescription>, StatusCode> {
+    if let Ok(d) = flowgraph.block_description(blk).await {
+        Ok(Json::from(d))
+    } else {
+        Err(StatusCode::BAD_REQUEST)
+    }
 }
 
 async fn handler_id(
     Path((blk, handler)): Path<(usize, usize)>,
-    Extension(boxes): Extension<Slab<Option<mpsc::Sender<AsyncMessage>>>>,
-) -> String {
-    let mut b = match boxes.get(blk) {
-        Some(Some(s)) => s.clone(),
-        _ => return "block not found".to_string(),
-    };
-
-    let (tx, rx) = oneshot::channel::<Pmt>();
-
-    b.send(AsyncMessage::Callback {
-        port_id: handler,
-        data: Pmt::Null,
-        tx,
-    })
-    .await
-    .unwrap();
-
-    let ret = rx.await.unwrap();
-
-    format!("{:?}", ret)
+    Extension(mut flowgraph): Extension<FlowgraphHandle>,
+) -> Result<Json<Pmt>, StatusCode> {
+    if let Ok(ret) = flowgraph.callback(blk, handler, Pmt::Null).await {
+        Ok(Json::from(ret))
+    } else {
+        Err(StatusCode::BAD_REQUEST)
+    }
 }
 
 async fn handler_id_post(
     Path((blk, handler)): Path<(usize, usize)>,
     Json(pmt): Json<Pmt>,
-    Extension(boxes): Extension<Slab<Option<mpsc::Sender<AsyncMessage>>>>,
-) -> String {
-    let mut b = match boxes.get(blk) {
-        Some(Some(s)) => s.clone(),
-        _ => return "block not found".to_string(),
-    };
-
-    let (tx, rx) = oneshot::channel::<Pmt>();
-
-    b.send(AsyncMessage::Callback {
-        port_id: handler,
-        data: pmt,
-        tx,
-    })
-    .await
-    .unwrap();
-
-    let ret = rx.await.unwrap();
-
-    format!("{:?}", ret)
+    Extension(mut flowgraph): Extension<FlowgraphHandle>,
+) -> Result<Json<Pmt>, StatusCode> {
+    if let Ok(ret) = flowgraph.callback(blk, handler, pmt).await {
+        Ok(Json::from(ret))
+    } else {
+        Err(StatusCode::BAD_REQUEST)
+    }
 }
 
-pub async fn start_control_port(inboxes: Slab<Option<mpsc::Sender<AsyncMessage>>>) {
+pub async fn start_control_port(flowgraph: FlowgraphHandle, custom_routes: Option<Router>) {
     if !config::config().ctrlport_enable {
         return;
     }
 
     let mut app = Router::new()
-        .route("/api/", get(index))
+        .route("/api/fg/", get(flowgraph_description))
+        .route("/api/block/:blk/", get(block_description))
         .route("/api/block/:blk/call/:handler/", get(handler_id))
         .route("/api/block/:blk/call/:handler/", post(handler_id_post))
-        .layer(AddExtensionLayer::new(inboxes))
+        .layer(AddExtensionLayer::new(flowgraph))
         .layer(CorsLayer::permissive());
+    if let Some(c) = custom_routes {
+        app = app.nest("/", c);
+    }
 
     let frontend = if let Some(ref p) = config::config().frontend_path {
         Some(ServeDir::new(p))
@@ -119,9 +113,10 @@ pub async fn start_control_port(inboxes: Slab<Option<mpsc::Sender<AsyncMessage>>
         runtime.block_on(async move {
             let addr = config::config().ctrlport_bind.unwrap();
             if let Ok(s) = axum::Server::try_bind(&addr) {
+                debug!("Listening on {}", addr);
                 s.serve(app.into_make_service()).await.unwrap();
             } else {
-                warn!("CtrlPort address already in use");
+                warn!("CtrlPort address {} already in use", addr);
             }
         });
     });

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use crate::anyhow::{bail, Context, Result};
 use crate::runtime::buffer::BufferBuilder;
 use crate::runtime::buffer::BufferWriter;
-use crate::runtime::AsyncMessage;
 use crate::runtime::Block;
+use crate::runtime::BlockMessage;
 use slab::Slab;
 use std::any::{Any, TypeId};
 use std::cmp::{Eq, PartialEq};
@@ -51,7 +51,7 @@ pub struct BufferBuilderEntry {
 impl BufferBuilderEntry {
     pub(crate) fn build(
         &self,
-        writer_inbox: Sender<AsyncMessage>,
+        writer_inbox: Sender<BlockMessage>,
         writer_output_id: usize,
     ) -> BufferWriter {
         self.builder
@@ -114,20 +114,26 @@ impl Topology {
 
     /// Adds a [Block] to the [Topology] returning the `id` of the [Block] in the [Topology].
     pub fn add_block(&mut self, mut block: Block) -> usize {
-        let type_name = block.type_name();
-        let mut i = 0;
-        let mut block_name;
+        let (mut i, base_name, mut block_name) = if let Some(name) = block.instance_name() {
+            (-1, name.to_string(), name.to_string())
+        } else {
+            (
+                0,
+                block.type_name().to_string(),
+                format!("{}_{}", block.type_name(), 0),
+            )
+        };
 
         // find a unique name
         loop {
-            block_name = format!("{}_{}", type_name, i);
             if self.block_id(&block_name).is_none() {
                 break;
             }
             i += 1;
+            block_name = format!("{}_{}", base_name, i);
         }
 
-        block.set_instance_name(&block_name);
+        block.set_instance_name(block_name);
         self.blocks.insert(Some(block))
     }
 
@@ -148,12 +154,7 @@ impl Topology {
             .collect();
 
         // delete associated message edges
-        self.message_edges = self
-            .message_edges
-            .iter()
-            .filter(|x| x.0 != id && x.2 != id)
-            .copied()
-            .collect();
+        self.message_edges.retain(|x| x.0 != id && x.2 != id);
     }
 
     pub fn connect_stream<B: BufferBuilder + Debug + Eq + Hash>(

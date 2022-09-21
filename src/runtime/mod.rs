@@ -1,3 +1,4 @@
+//! ## SDR Runtime
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 
@@ -8,6 +9,13 @@ pub mod config;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ctrl_port;
+#[cfg(target_arch = "wasm32")]
+pub mod ctrl_port {
+    pub use futuresdr_pmt::BlockDescription;
+    pub use futuresdr_pmt::FlowgraphDescription;
+}
+use crate::runtime::ctrl_port::BlockDescription;
+use crate::runtime::ctrl_port::FlowgraphDescription;
 
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 mod logging;
@@ -19,13 +27,13 @@ mod logging;
 mod logging;
 
 mod flowgraph;
-mod message_io;
+pub mod message_io;
 mod mocker;
 #[allow(clippy::module_inception)]
 mod runtime;
 pub mod scheduler;
-mod stream_io;
-pub mod tag;
+pub mod stream_io;
+mod tag;
 mod topology;
 
 pub use block::Block;
@@ -60,14 +68,40 @@ pub fn init() {
 }
 
 #[derive(Debug)]
-pub enum AsyncMessage {
-    Initialize,
-    Initialized,
-    Notify,
+pub enum FlowgraphMessage {
     Terminate,
+    Initialized,
     BlockDone {
-        id: usize,
+        block_id: usize,
         block: Block,
+    },
+    BlockCall {
+        block_id: usize,
+        port_id: usize,
+        data: Pmt,
+    },
+    BlockCallback {
+        block_id: usize,
+        port_id: usize,
+        data: Pmt,
+        tx: oneshot::Sender<Pmt>,
+    },
+    FlowgraphDescription {
+        tx: oneshot::Sender<FlowgraphDescription>,
+    },
+    BlockDescription {
+        block_id: usize,
+        tx: oneshot::Sender<BlockDescription>,
+    },
+}
+
+#[derive(Debug)]
+pub enum BlockMessage {
+    Initialize,
+    Terminate,
+    Notify,
+    BlockDescription {
+        tx: oneshot::Sender<BlockDescription>,
     },
     StreamOutputInit {
         src_port: usize,
@@ -86,24 +120,13 @@ pub enum AsyncMessage {
     MessageOutputConnect {
         src_port: usize,
         dst_port: usize,
-        dst_inbox: mpsc::Sender<AsyncMessage>,
+        dst_inbox: mpsc::Sender<BlockMessage>,
     },
     Call {
         port_id: usize,
         data: Pmt,
     },
     Callback {
-        port_id: usize,
-        data: Pmt,
-        tx: oneshot::Sender<Pmt>,
-    },
-    BlockCall {
-        block_id: usize,
-        port_id: usize,
-        data: Pmt,
-    },
-    BlockCallback {
-        block_id: usize,
         port_id: usize,
         data: Pmt,
         tx: oneshot::Sender<Pmt>,

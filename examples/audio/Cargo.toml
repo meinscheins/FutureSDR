@@ -3,9 +3,7 @@ name = "audio"
 version = "0.0.1"
 edition = "2021"
 
-[[bin]]
-name = "loopback"
-path = "loopback.rs"
+[workspace]
 
 [[bin]]
 name = "play-file"
