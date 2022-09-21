@@ -138,6 +138,7 @@ impl Kernel for SoapySink {
         _mio: &mut MessageIo<Self>,
         _meta: &mut BlockMeta,
     ) -> Result<()> {
+        async_io::Timer::after(std::time::Duration::from_secs(10)).await;
         let channel: usize = 0;
         soapysdr::configure_logging();
         self.dev = Some(soapysdr::Device::new(self.filter.as_str())?);
