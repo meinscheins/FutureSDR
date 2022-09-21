@@ -1,9 +1,11 @@
 use clap::Parser;
-use futuresdr::futures::channel::mpsc;
-use futuresdr::futures::StreamExt;
+use std::time::Duration;
 
 use futuresdr::anyhow::Result;
 use futuresdr::async_io::block_on;
+use futuresdr::async_io::Timer;
+use futuresdr::async_net::SocketAddr;
+use futuresdr::async_net::UdpSocket;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
@@ -11,6 +13,11 @@ use futuresdr::blocks::FftDirection;
 use futuresdr::blocks::MessagePipe;
 use futuresdr::blocks::SoapySinkBuilder;
 use futuresdr::blocks::SoapySourceBuilder;
+use futuresdr::futures::channel::mpsc;
+use futuresdr::futures::channel::oneshot;
+use futuresdr::futures::StreamExt;
+use futuresdr::log::info;
+use futuresdr::log::warn;
 use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::buffer::circular::Circular;
 use futuresdr::runtime::Flowgraph;
@@ -151,15 +158,15 @@ fn main() -> Result<()> {
     let decoder = fg.add_block(Decoder::new());
     fg.connect_stream(frame_equalizer, "out", decoder, "in")?;
 
-    let (tx_frame, mut rx_frame) = mpsc::channel::<Pmt>(100);
-    let message_pipe = fg.add_block(MessagePipe::new(tx_frame));
+    let (rxed_sender, mut rxed_frames) = mpsc::channel::<Pmt>(100);
+    let message_pipe = fg.add_block(MessagePipe::new(rxed_sender));
     fg.connect_message(decoder, "rx_frames", message_pipe, "in")?;
 
     // ============================================
     // TRANSMITTER
     // ============================================
     let mac = fg.add_block(Mac::new([0x42; 6], [0x23; 6], [0xff; 6]));
-    let encoder = fg.add_block(Encoder::new(Mcs::Qpsk_1_2));
+    let encoder = fg.add_block(Encoder::new(args.mcs));
     fg.connect_message(mac, "tx", encoder, "tx")?;
     let mapper = fg.add_block(Mapper::new());
     fg.connect_stream(encoder, "out", mapper, "in")?;
@@ -200,18 +207,104 @@ fn main() -> Result<()> {
     )?;
 
     let rt = Runtime::new();
-    let (_fg, _handle) = block_on(rt.start(fg));
+    let (fg, mut handle) = block_on(rt.start(fg));
 
-    rt.block_on(async move {
-        while let Some(x) = rx_frame.next().await {
-            match x {
-                Pmt::Blob(data) => {
-                    println!("received frame ({:?} bytes)", data.len());
-                }
-                _ => break,
+    // if tx_interval is set, send messages periodically
+    if let Some(tx_interval) = args.tx_interval {
+        let mut seq = 0u64;
+        let mut myhandle = handle.clone();
+        rt.spawn_background(async move {
+            loop {
+                Timer::after(Duration::from_secs_f32(tx_interval)).await;
+                myhandle
+                    .call(
+                        mac,
+                        0,
+                        Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
+                    )
+                    .await
+                    .unwrap();
+                seq += 1;
             }
-        }
-    });
+        });
+    }
+
+    // we are the udp server
+    if let Some(port) = args.local_port {
+        info!("Acting as UDP server.");
+        let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
+        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", port))).unwrap();
+        let socket2 = socket.clone();
+
+        rt.spawn_background(async move {
+            let mut buf = vec![0u8; 1024];
+
+            let (n, e) = socket.recv_from(&mut buf).await.unwrap();
+            handle
+                .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                .await
+                .unwrap();
+
+            tx_endpoint.send(e).unwrap();
+
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                handle
+                    .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                    .await
+                    .unwrap();
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint.await.unwrap();
+            info!("endpoint connected to local udp server {:?}", &endpoint);
+
+            loop {
+                if let Some(p) = rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        socket2.send_to(&v, endpoint).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+    } else if let Some(remote) = args.remote_udp {
+        info!("Acting as UDP client.");
+        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", 0))).unwrap();
+        block_on(socket.connect(remote)).unwrap();
+        let socket2 = socket.clone();
+
+        rt.spawn_background(async move {
+            let mut buf = vec![0u8; 1024];
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                handle
+                    .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                    .await
+                    .unwrap();
+            }
+        });
+
+        rt.spawn_background(async move {
+            loop {
+                if let Some(p) = rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        socket2.send(&v).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+    }
+
+    block_on(fg)?;
 
     Ok(())
 }
