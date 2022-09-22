@@ -13,6 +13,8 @@ use futuresdr::blocks::FftDirection;
 use futuresdr::blocks::MessagePipe;
 use futuresdr::blocks::SoapySinkBuilder;
 use futuresdr::blocks::SoapySourceBuilder;
+use futuresdr::blocks::WebsocketSinkBuilder;
+use futuresdr::blocks::WebsocketSinkMode;
 use futuresdr::futures::channel::mpsc;
 use futuresdr::futures::channel::oneshot;
 use futuresdr::futures::StreamExt;
@@ -29,7 +31,9 @@ use wlan::parse_channel;
 use wlan::Decoder;
 use wlan::Delay;
 use wlan::Encoder;
+use wlan::FftShift;
 use wlan::FrameEqualizer;
+use wlan::Keep1InN;
 use wlan::Mac;
 use wlan::Mapper;
 use wlan::Mcs;
@@ -84,6 +88,9 @@ struct Args {
     /// send periodic messages for testing
     #[clap(long, value_parser)]
     tx_interval: Option<f32>,
+    /// Stream Spectrum data at ws://0.0.0.0:9001
+    #[clap(long, value_parser)]
+    spectrum: bool,
 }
 
 fn main() -> Result<()> {
@@ -205,6 +212,27 @@ fn main() -> Result<()> {
     let (rxed_sender, mut rxed_frames) = mpsc::channel::<Pmt>(100);
     let message_pipe = fg.add_block(MessagePipe::new(rxed_sender));
     fg.connect_message(decoder, "rx_frames", message_pipe, "in")?;
+
+    // ========================================
+    // Spectrum
+    // ========================================
+    if args.spectrum {
+        let snk = fg.add_block(
+            WebsocketSinkBuilder::<f32>::new(9001)
+                .mode(WebsocketSinkMode::FixedDropping(2048))
+                .build(),
+        );
+        let fft = fg.add_block(Fft::new(2048));
+        let shift = fg.add_block(FftShift::new());
+        let keep = fg.add_block(Keep1InN::new(0.5, 10));
+        let cpy = fg.add_block(futuresdr::blocks::Copy::<Complex32>::new());
+
+        fg.connect_stream(src, "out", cpy, "in")?;
+        fg.connect_stream(cpy, "out", fft, "in")?;
+        fg.connect_stream(fft, "out", shift, "in")?;
+        fg.connect_stream(shift, "out", keep, "in")?;
+        fg.connect_stream(keep, "out", snk, "in")?;
+    }
 
     let rt = Runtime::new();
     let (fg, mut handle) = block_on(rt.start(fg));

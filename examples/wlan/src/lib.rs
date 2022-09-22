@@ -18,8 +18,14 @@ pub use delay::Delay;
 mod encoder;
 pub use encoder::Encoder;
 
+mod fft_shift;
+pub use fft_shift::FftShift;
+
 mod frame_equalizer;
 pub use frame_equalizer::FrameEqualizer;
+
+mod keep_1_in_n;
+pub use keep_1_in_n::Keep1InN;
 
 mod mac;
 pub use mac::Mac;
