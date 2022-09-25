@@ -82,6 +82,9 @@ struct Args {
     /// local UDP port to receive messages to send
     #[clap(long, value_parser)]
     local_port: Option<u32>,
+    /// local IP to bind to
+    #[clap(long, value_parser, default_value = "0.0.0.0")]
+    local_ip: String,
     /// remote UDP server to forward received messages to
     #[clap(long, value_parser)]
     remote_udp: Option<String>,
@@ -261,7 +264,7 @@ fn main() -> Result<()> {
     if let Some(port) = args.local_port {
         info!("Acting as UDP server.");
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
-        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", port))).unwrap();
+        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
 
         rt.spawn_background(async move {
@@ -302,7 +305,7 @@ fn main() -> Result<()> {
         });
     } else if let Some(remote) = args.remote_udp {
         info!("Acting as UDP client.");
-        let socket = block_on(UdpSocket::bind(format!("0.0.0.0:{}", 0))).unwrap();
+        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
 
