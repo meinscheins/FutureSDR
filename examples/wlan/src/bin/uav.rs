@@ -312,11 +312,16 @@ fn main() -> Result<()> {
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
             loop {
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                handle
-                    .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                    .await
-                    .unwrap();
+                match socket.recv_from(&mut buf).await {
+                    Ok((n, s)) => {
+                        println!("sending frame size {} from {:?}", n, s);
+                        handle
+                            .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                            .await
+                            .unwrap()
+                    }
+                    Err(e) => println!("ERROR: {:?}", e),
+                }
             }
         });
 
@@ -324,7 +329,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        socket2.send(&v).await.unwrap();
+                        println!("received frame size {}", v.len() - 24);
+                        socket2.send(&v[24..]).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
