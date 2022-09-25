@@ -76,6 +76,12 @@ struct Args {
     /// WLAN TX Channel Number
     #[clap(long, value_parser = parse_channel, default_value = "34")]
     tx_channel: f64,
+    /// Soapy RX Channel
+    #[clap(long, default_value_t = 0)]
+    soapy_rx_channel: usize,
+    /// Soapy TX Channel
+    #[clap(long, default_value_t = 0)]
+    soapy_tx_channel: usize,
     /// TX MCS
     #[clap(long, value_parser = Mcs::parse, default_value = "qpsk12")]
     mcs: Mcs,
@@ -145,7 +151,8 @@ fn main() -> Result<()> {
     let mut soapy = SoapySinkBuilder::new()
         .freq(args.tx_channel)
         .sample_rate(args.sample_rate)
-        .gain(args.tx_gain);
+        .gain(args.tx_gain)
+        .channel(args.soapy_tx_channel);
     if let Some(a) = args.tx_antenna {
         soapy = soapy.antenna(a);
     }
@@ -167,7 +174,8 @@ fn main() -> Result<()> {
     let mut soapy = SoapySourceBuilder::new()
         .freq(args.rx_channel)
         .sample_rate(args.sample_rate)
-        .gain(args.rx_gain);
+        .gain(args.rx_gain)
+        .channel(args.soapy_rx_channel);
     if let Some(a) = args.rx_antenna {
         soapy = soapy.antenna(a);
     }
