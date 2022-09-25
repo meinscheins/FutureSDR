@@ -294,7 +294,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        socket2.send_to(&v, endpoint).await.unwrap();
+                        println!("received frame, size {}", v.len() - 24);
+                        socket2.send_to(&v[24..], endpoint).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
