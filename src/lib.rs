@@ -10,24 +10,24 @@
 //! * **Fast**: SDR go brrr!
 //!
 //! ## Example
-//! An example flowgraph with a periodic message source, sending five messages to a sink:
+//! An example flowgraph that forwards 123 zeros into a sink:
 //! ```
-//! use anyhow::Result;
-//! use std::time::Duration;
-//!
-//! use futuresdr::blocks::MessageSink;
-//! use futuresdr::blocks::MessageSource;
+//! use futuresdr::anyhow::Result;
+//! use futuresdr::blocks::Head;
+//! use futuresdr::blocks::NullSink;
+//! use futuresdr::blocks::NullSource;
+//! use futuresdr::macros::connect;
 //! use futuresdr::runtime::Flowgraph;
-//! use futuresdr::runtime::Pmt;
 //! use futuresdr::runtime::Runtime;
 //!
 //! fn main() -> Result<()> {
 //!     let mut fg = Flowgraph::new();
 //!
-//!     let src = fg.add_block(MessageSource::new(Pmt::Null, Duration::from_secs(1), Some(5)));
-//!     let snk = fg.add_block(MessageSink::new());
+//!     let src = NullSource::<u8>::new();
+//!     let head = Head::<u8>::new(123);
+//!     let snk = NullSink::<u8>::new();
 //!
-//!     fg.connect_message(src, "out", snk, "in")?;
+//!     connect!(fg, src > head > snk);
 //!
 //!     Runtime::new().run(fg)?;
 //!
@@ -49,6 +49,11 @@ pub use futures;
 pub use futures_lite;
 #[macro_use]
 pub extern crate log;
+/// Macros to make working with FutureSDR a bit nicer.
+pub mod macros {
+    pub use futuresdr_macros::connect;
+    pub use futuresdr_macros::message_handler;
+}
 
 pub use anyhow;
 pub use num_complex;

@@ -25,6 +25,7 @@
 //! | [Head] | Copies only a given number of samples and stops. | ✅ |
 //! | [NullSink] | Drops samples. | ✅ |
 //! | [NullSource] | Generates a stream of zeros. | ✅ |
+//! | [Selector] | Forward the input stream with a given index to the output stream with a given index. | ✅ |
 //! | [TagDebug] | Drop samples, printing tags. | ✅ |
 //! | [Throttle] | Limit sample rate. | ❌ |
 //! | [VectorSink] | Store received samples in vector. | ✅ |
@@ -50,7 +51,8 @@
 //! ## I/O
 //! | Block | Usage | WebAssembly? |
 //! |---|---|---|
-//! | [BlobToUdp] | Push [Blobs](crate::runtime::Pmt::Blob) into a UDP socket.| ❌ |
+//! | [BlobToUdp] | Push [Blobs](crate::runtime::Pmt::Blob) into a UDP socket. | ❌ |
+//! | [ChannelSource] | Push samples through a channel into a stream connection. | ✅ |
 //! | [FileSink] | Write samples to a file. | ❌ |
 //! | [FileSource] | Read samples from a file. | ❌ |
 //! | [TcpSource] | Reads samples from a TCP socket. | ❌ |
@@ -80,13 +82,17 @@
 //! | WasmWsSink | Send samples via a WebSocket. | ✅ |
 //! | WasmFreq | Push samples to a GUI sink. | ✅ |
 //!
+//! ## Signal Sources
+//! | Block | Usage | WebAssembly? |
+//! |---|---|---|
+//! | [Oscillator](Oscillator) | Create sine tone. | ✅ |
+//!
 //! ## Audio (requires `audio` feature)
 //! | Block | Usage | WebAssembly? |
 //! |---|---|---|
 //! | [AudioSink](audio::AudioSink) | Audio sink. | ❌ |
 //! | [AudioSource](audio::AudioSource) | Audio source. | ❌ |
 //! | [FileSource](audio::FileSource) | Read an audio file and output its samples. | ❌ |
-//! | [Oscillator](audio::Oscillator) | Create tone. | ✅ |
 //! | [WavSink](audio::WavSink) | Writes samples to a WAV file | ❌ |
 //!
 
@@ -168,6 +174,9 @@ pub use null_sink::NullSink;
 mod null_source;
 pub use null_source::NullSource;
 
+mod oscillator;
+pub use oscillator::Oscillator;
+
 #[cfg(feature = "soapy")]
 pub(self) mod soapy_snk;
 #[cfg(feature = "soapy")]
@@ -176,6 +185,10 @@ pub use soapy_snk::{SoapySink, SoapySinkBuilder};
 mod soapy_src;
 #[cfg(feature = "soapy")]
 pub use soapy_src::{SoapySource, SoapySourceBuilder};
+
+mod selector;
+pub use selector::DropPolicy as SelectorDropPolicy;
+pub use selector::Selector;
 
 mod source;
 pub use source::Source;
@@ -199,6 +212,9 @@ pub use tcp_source::TcpSource;
 mod throttle;
 #[cfg(not(target_arch = "wasm32"))]
 pub use throttle::Throttle;
+
+mod channel_source;
+pub use channel_source::ChannelSource;
 
 mod vector_sink;
 pub use vector_sink::{VectorSink, VectorSinkBuilder};

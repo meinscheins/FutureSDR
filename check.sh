@@ -9,8 +9,9 @@ SCRIPTPATH=`dirname $SCRIPT`
 # FMT
 ###########################################################
 cd ${SCRIPTPATH} && cargo fmt --check
-cd ${SCRIPTPATH}/pmt && cargo fmt --check
 cd ${SCRIPTPATH}/frontend && cargo fmt --check
+cd ${SCRIPTPATH}/macros && cargo fmt --check
+cd ${SCRIPTPATH}/pmt && cargo fmt --check
 
 # perf
 cd ${SCRIPTPATH}/perf/buffer_rand && cargo fmt --check
@@ -33,6 +34,7 @@ cd ${SCRIPTPATH}/examples/cw && cargo fmt --check
 cd ${SCRIPTPATH}/examples/firdes && cargo fmt --check
 cd ${SCRIPTPATH}/examples/fm-receiver && cargo fmt --check
 cd ${SCRIPTPATH}/examples/logging && cargo fmt --check
+cd ${SCRIPTPATH}/examples/macros && cargo fmt --check
 cd ${SCRIPTPATH}/examples/rx-to-file && cargo fmt --check
 cd ${SCRIPTPATH}/examples/spectrum && cargo fmt --check
 cd ${SCRIPTPATH}/examples/wasm && cargo fmt --check
@@ -46,8 +48,12 @@ cd ${SCRIPTPATH}/examples/zigbee && cargo fmt --check
 ###########################################################
 cd ${SCRIPTPATH} && cargo clippy --all-targets --workspace --features=vulkan,zeromq,audio,flow_scheduler,tpb_scheduler,soapy,lttng,zynq,wgpu -- -D warnings
 cd ${SCRIPTPATH} && RUSTFLAGS='--cfg=web_sys_unstable_apis' cargo clippy --lib --workspace --features=audio,wgpu --target=wasm32-unknown-unknown -- -D warnings
-cd ${SCRIPTPATH}/pmt && cargo clippy --all-targets -- -D warnings
+cd ${SCRIPTPATH}/macros && cargo clippy --all-targets -- -D warnings
+cd ${SCRIPTPATH}/macros && cargo clippy --all-targets --target=wasm32-unknown-unknown -- -D warnings
+cd ${SCRIPTPATH}/frontend && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/frontend && cargo clippy --all-targets --target=wasm32-unknown-unknown -- -D warnings
+cd ${SCRIPTPATH}/pmt && cargo clippy --all-targets -- -D warnings
+cd ${SCRIPTPATH}/pmt && cargo clippy --all-targets --target=wasm32-unknown-unknown -- -D warnings
 
 # perf
 cd ${SCRIPTPATH}/perf/buffer_rand && cargo clippy --all-targets -- -D warnings
@@ -72,6 +78,7 @@ cd ${SCRIPTPATH}/examples/cw && cargo clippy --lib --target=wasm32-unknown-unkno
 cd ${SCRIPTPATH}/examples/firdes && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/examples/fm-receiver && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/examples/logging && cargo clippy --all-targets -- -D warnings
+cd ${SCRIPTPATH}/examples/macros && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/examples/rx-to-file && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/examples/spectrum && cargo clippy --all-targets -- -D warnings
 cd ${SCRIPTPATH}/examples/spectrum && RUSTFLAGS='--cfg=web_sys_unstable_apis' cargo clippy --lib --target=wasm32-unknown-unknown -- -D warnings
@@ -110,6 +117,7 @@ cd ${SCRIPTPATH}/examples/cw && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/firdes && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/fm-receiver && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/logging && cargo test --all-targets
+cd ${SCRIPTPATH}/examples/macros && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/rx-to-file && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/spectrum && cargo test --all-targets
 cd ${SCRIPTPATH}/examples/wasm && cargo test --all-targets
