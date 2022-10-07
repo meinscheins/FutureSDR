@@ -1,0 +1,17 @@
+[package]
+name = "multi-trx"
+version = "0.1.0"
+edition = "2021"
+default-run = "rx"
+
+[workspace]
+
+[[bin]]
+name = "rx"
+path = "src/bin/rx.rs"
+
+[dependencies]
+clap = { version = "3.1.18", features = ["derive"] }
+futuresdr = { path = "../..", features = ["soapy"] }
+zigbee = { path = "../zigbee"}
+wlan = { path = "../wlan"}
