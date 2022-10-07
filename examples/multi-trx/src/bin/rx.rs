@@ -88,16 +88,16 @@ fn main() -> Result<()>{
 
     //WLAN receiver
     let wlan_delay = fg.add_block(WlanDelay::<Complex32>::new(16));
-    fg.connect_stream(selector, "out1", wlan_delay, "in")?;
+    fg.connect_stream(selector, "out0", wlan_delay, "in")?;
 
     let wlan_complex_to_mag_2 = fg.add_block(Apply::new(|i: &Complex32| i.norm_sqr()));
     let wlan_float_avg = fg.add_block(WlanMovingAverage::<f32>::new(64));
-    fg.connect_stream(selector, "out1", wlan_complex_to_mag_2, "in")?;
+    fg.connect_stream(selector, "out0", wlan_complex_to_mag_2, "in")?;
     fg.connect_stream(wlan_complex_to_mag_2, "out", wlan_float_avg, "in")?;
 
     let wlan_mult_conj = fg.add_block(Combine::new(|a: &Complex32, b: &Complex32| a * b.conj()));
     let wlan_complex_avg = fg.add_block(WlanMovingAverage::<Complex32>::new(48));
-    fg.connect_stream(selector, "out1", wlan_mult_conj, "in0")?;
+    fg.connect_stream(selector, "out0", wlan_mult_conj, "in0")?;
     fg.connect_stream(wlan_delay, "out", wlan_mult_conj, "in1")?;
     fg.connect_stream(wlan_mult_conj, "out", wlan_complex_avg, "in")?;
 
@@ -124,9 +124,9 @@ fn main() -> Result<()>{
     let wlan_decoder = fg.add_block(WlanDecoder::new());
     fg.connect_stream(wlan_frame_equalizer, "out", wlan_decoder, "in")?;
 
-    let (wlan_tx_frame, mut wlan_rx_frame) = mpsc::channel::<Pmt>(100);
-    let wlan_message_pipe = fg.add_block(MessagePipe::new(wlan_tx_frame));
-    fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
+    //let (wlan_tx_frame, mut wlan_rx_frame) = mpsc::channel::<Pmt>(100);
+    //let wlan_message_pipe = fg.add_block(MessagePipe::new(wlan_tx_frame));
+    //fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55555"));
     fg.connect_message(wlan_decoder, "rx_frames", wlan_blob_to_udp, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
@@ -159,15 +159,15 @@ fn main() -> Result<()>{
     ));
 
     let zigbee_decoder = fg.add_block(ZigbeeDecoder::new(6));
-    let zigbee_mac = fg.add_block(ZigbeeMac::new());
-    let zigbee_snk = fg.add_block(NullSink::<u8>::new());
-    let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
+    //let zigbee_mac = fg.add_block(ZigbeeMac::new());
+    //let zigbee_snk = fg.add_block(NullSink::<u8>::new());
+    let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
 
-    fg.connect_stream(src, "out", avg, "in")?;
+    fg.connect_stream(selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
-    fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
+    //fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
+    //fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
 
 
