@@ -322,7 +322,7 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
             loop {
                 match socket.recv_from(&mut buf).await {
-                    Ok((n, s)) => {
+                    Ok((n, _s)) => {
                         //println!("sending frame size {} from {:?}", n, s);
                         handle
                             .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))

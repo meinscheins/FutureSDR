@@ -1,5 +1,3 @@
-use std::mem::size_of;
-
 use futuresdr::anyhow::Result;
 use futuresdr::async_trait::async_trait;
 use futuresdr::num_complex::Complex32;
@@ -21,8 +19,8 @@ impl FftShift {
         Block::new(
             BlockMetaBuilder::new("FftShift").build(),
             StreamIoBuilder::new()
-                .add_input("in", size_of::<Complex32>())
-                .add_output("out", size_of::<f32>())
+                .add_input::<Complex32>("in")
+                .add_output::<f32>("out")
                 .build(),
             MessageIoBuilder::new().build(),
             Self,
