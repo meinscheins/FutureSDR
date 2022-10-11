@@ -25,9 +25,10 @@ use futuresdr::runtime::buffer::circular::Circular;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
+use futuresdr::soapysdr::Device;
+use futuresdr::soapysdr::Direction;
 
 use wlan::fft_tag_propagation;
-use wlan::parse_channel;
 use wlan::Decoder;
 use wlan::Delay;
 use wlan::Encoder;
@@ -70,18 +71,24 @@ struct Args {
     /// Sample Rate
     #[clap(long, default_value_t = 20e6)]
     sample_rate: f64,
-    /// WLAN RX Channel Number
-    #[clap(long, value_parser = parse_channel, default_value = "34")]
-    rx_channel: f64,
-    /// WLAN TX Channel Number
-    #[clap(long, value_parser = parse_channel, default_value = "34")]
-    tx_channel: f64,
+    // /// WLAN RX Channel Number
+    // #[clap(long, value_parser = parse_channel, default_value = "34")]
+    // rx_channel: f64,
+    // /// WLAN TX Channel Number
+    // #[clap(long, value_parser = parse_channel, default_value = "34")]
+    // tx_channel: f64,
     /// Soapy RX Channel
     #[clap(long, default_value_t = 0)]
     soapy_rx_channel: usize,
     /// Soapy TX Channel
     #[clap(long, default_value_t = 0)]
     soapy_tx_channel: usize,
+    /// Soapy RX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    rx_freq_offset: f64,
+    /// Soapy TX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    tx_freq_offset: f64,
     /// TX MCS
     #[clap(long, value_parser = Mcs::parse, default_value = "qpsk12")]
     mcs: Mcs,
@@ -148,8 +155,16 @@ fn main() -> Result<()> {
         "in",
         Circular::with_size(prefix_in_size),
     )?;
+    let soapy_dev = Device::new("").unwrap();
+    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.45e9, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", args.tx_freq_offset, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.45e9, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", args.rx_freq_offset, "").unwrap();
+
+    soapy_dev.set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true).unwrap();
+    soapy_dev.set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true).unwrap();
     let mut soapy = SoapySinkBuilder::new()
-        .freq(args.tx_channel)
+        .device(soapy_dev.clone())
         .sample_rate(args.sample_rate)
         .gain(args.tx_gain)
         .channel(args.soapy_tx_channel);
@@ -172,7 +187,7 @@ fn main() -> Result<()> {
     // RECEIVER
     // ============================================
     let mut soapy = SoapySourceBuilder::new()
-        .freq(args.rx_channel)
+        .device(soapy_dev)
         .sample_rate(args.sample_rate)
         .gain(args.rx_gain)
         .channel(args.soapy_rx_channel);
