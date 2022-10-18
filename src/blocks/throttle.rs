@@ -49,8 +49,8 @@ impl<T: Send + 'static> Throttle<T> {
         Block::new(
             BlockMetaBuilder::new("Throttle").build(),
             StreamIoBuilder::new()
-                .add_input("in", std::mem::size_of::<T>())
-                .add_output("out", std::mem::size_of::<T>())
+                .add_input::<T>("in")
+                .add_output::<T>("out")
                 .build(),
             MessageIoBuilder::<Self>::new().build(),
             Throttle::<T> {
@@ -73,8 +73,8 @@ impl<T: Send + 'static> Kernel for Throttle<T> {
         _mio: &mut MessageIo<Self>,
         _meta: &mut BlockMeta,
     ) -> Result<()> {
-        let i = sio.input(0).slice::<u8>();
-        let o = sio.output(0).slice::<u8>();
+        let i = sio.input(0).slice_unchecked::<u8>();
+        let o = sio.output(0).slice_unchecked::<u8>();
         let item_size = std::mem::size_of::<T>();
 
         let mut m = cmp::min(i.len(), o.len());
@@ -83,7 +83,7 @@ impl<T: Send + 'static> Kernel for Throttle<T> {
         let target_items = (now - self.t_init).as_secs_f64() * self.rate;
         let target_items = target_items.floor() as usize;
 
-        m = cmp::min(m, (target_items - self.n_items) * item_size) as usize;
+        m = cmp::min(m, (target_items - self.n_items) * item_size);
         if m != 0 {
             unsafe {
                 ptr::copy_nonoverlapping(i.as_ptr(), o.as_mut_ptr(), m);

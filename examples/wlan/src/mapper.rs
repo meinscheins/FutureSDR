@@ -30,8 +30,8 @@ impl Mapper {
         Block::new(
             BlockMetaBuilder::new("Mapper").build(),
             StreamIoBuilder::new()
-                .add_input("in", 1)
-                .add_output("out", std::mem::size_of::<Complex32>())
+                .add_input::<u8>("in")
+                .add_output::<Complex32>("out")
                 .build(),
             MessageIoBuilder::new().build(),
             Mapper {
@@ -139,7 +139,10 @@ impl Kernel for Mapper {
     ) -> Result<()> {
         let mut input = sio.input(0).slice::<u8>();
         let output = sio.output(0).slice::<Complex32>();
-        if output.len() < 64 {
+        if output.len() < 128 || input.len() < 48 {
+            if sio.input(0).finished() {
+                io.finished = true;
+            }
             return Ok(());
         }
 

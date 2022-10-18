@@ -2,7 +2,7 @@ use clap::Parser;
 use futuresdr::anyhow::Result;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::Head;
-use futuresdr::blocks::SoapySource;
+use futuresdr::blocks::SoapySourceBuilder;
 use futuresdr::blocks::{FileSink, FileSource};
 use futuresdr::num_complex::{Complex, Complex32};
 use futuresdr::runtime::Flowgraph;
@@ -59,15 +59,14 @@ fn main() -> Result<()> {
         (Some(_), Some(_)) => {
             panic!("Cannot specify both soapy source and input file");
         }
-        (Some(soapy), None) => fg.add_block(SoapySource::new(
-            args.frequency,
-            args.rate,
-            args.gain,
-            soapy,
-            None as Option<String>,
-            0,
-            None,
-        )),
+        (Some(soapy), None) => fg.add_block(
+            SoapySourceBuilder::new()
+                .freq(args.frequency)
+                .sample_rate(args.rate)
+                .gain(args.gain)
+                .filter(soapy)
+                .build(),
+        ),
         (None, Some(input)) => {
             let format = args
                 .format_in
@@ -80,8 +79,8 @@ fn main() -> Result<()> {
                 "cs8" => {
                     let src = fg.add_block(FileSource::<Complex<i8>>::new(input, false));
                     let typecvt = fg.add_block(Apply::new(|i: &Complex32| Complex {
-                        re: i.re as f32 / 127.,
-                        im: i.im as f32 / 127.,
+                        re: i.re / 127.,
+                        im: i.im / 127.,
                     }));
                     fg.connect_stream(src, "out", typecvt, "in")?;
                     typecvt
