@@ -99,7 +99,7 @@ fn main() -> Result<()>{
     
     fg.connect_stream(src, "out", selector, "in0")?;
     
-    /*
+    
     //WLAN receiver
     let wlan_delay = fg.add_block(WlanDelay::<Complex32>::new(16));
     fg.connect_stream(selector, "out0", wlan_delay, "in")?;
@@ -149,7 +149,7 @@ fn main() -> Result<()>{
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
     fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
     
-    */
+    
     //Zigbee receiver
     let mut last: Complex32 = Complex32::new(0.0, 0.0);
     let mut iir: f32 = 0.0;
@@ -187,18 +187,19 @@ fn main() -> Result<()>{
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
     
+    //for testing purposes
+    let null_snk0 = fg.add_block(NullSink::<Complex32>::new());
+    fg.connect_stream(selector, "out0", null_snk0, "in")?;
+    let null_snk1 = fg.add_block(NullSink::<Complex32>::new());
+    fg.connect_stream(selector, "out1", null_snk1, "in")?;
 
-    let null_snk = fg.add_block(NullSink::<Complex32>::new());
-    println!("test");
-    fg.connect_stream(selector, "out0", null_snk, "in")?;
-
-     // Start the flowgraph and save the handle
+    // Start the flowgraph and save the handle
     let rt = Runtime::new();
-    rt.run(fg)?;
-    //let (_res, mut handle) = async_io::block_on(rt.start(fg));
+    //rt.run(fg)?;
+    let (_res, mut handle) = async_io::block_on(rt.start(fg));
 
     // Keep asking user for the selection
-    /*loop {
+    loop {
         println!("Enter a new output index");
         // Get input from stdin and remove all whitespace (most importantly '\n' at the end)
         let mut input = String::new(); // Input buffer
@@ -218,6 +219,6 @@ fn main() -> Result<()>{
             println!("Input not parsable: {}", input);
         }
     }
-    */
+    
     Ok(())
 }
