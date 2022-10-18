@@ -63,18 +63,24 @@ struct Args {
 
 fn main() -> Result<()>{
     let args = Args::parse();
+    println!("Configuration {:?}", args);
+
+    let zigbee_freq = zigbee_channel_to_freq(args.zigbee_channel)?;
+    let freq = [args.wlan_channel, zigbee_freq];
+
+    let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
 
     let mut fg = Flowgraph::new();
 
-    let selector = Selector::<f32, 1, 2>::new(args.drop_policy);
+    let selector = Selector::<Complex32, 1, 2>::new(args.drop_policy);
     let output_index_port_id = selector
-        .message_output_name_to_id("output_index")
+        .message_input_name_to_id("output_index")
         .expect("No output_index port found!");
     let selector = fg.add_block(selector);
 
     let mut soapy = SoapySourceBuilder::new()
-        .freq(args.wlan_channel)
-        .sample_rate(args.wlan_sample_rate)
+        .freq(freq[0])
+        .sample_rate(sample_rate[0])
         .gain(args.gain);
     if let Some(a) = args.antenna {
         soapy = soapy.antenna(a);
@@ -83,21 +89,31 @@ fn main() -> Result<()>{
         soapy = soapy.filter(f);
     }
 
-    let src = fg.add_block(soapy.build());
-    fg.connect_stream(src, "out", selector, "in")?;
+    let soapy = soapy.build();
+    let freq_input_port_id = soapy
+        .message_input_name_to_id("freq") 
+        .expect("No freq port found!");
+    let sample_rate_input_port_id = soapy
+        .message_input_name_to_id("sample_rate")
+        .expect("No sample_rate port found!");
+    let src = fg.add_block(soapy);
+    fg.connect_stream(src, "out", selector, "in0")?;
 
     //WLAN receiver
     let wlan_delay = fg.add_block(WlanDelay::<Complex32>::new(16));
     fg.connect_stream(selector, "out0", wlan_delay, "in")?;
+    //fg.connect_stream(src, "out", wlan_delay, "in")?;
 
     let wlan_complex_to_mag_2 = fg.add_block(Apply::new(|i: &Complex32| i.norm_sqr()));
     let wlan_float_avg = fg.add_block(WlanMovingAverage::<f32>::new(64));
     fg.connect_stream(selector, "out0", wlan_complex_to_mag_2, "in")?;
+    //fg.connect_stream(src, "out", wlan_complex_to_mag_2, "in")?;
     fg.connect_stream(wlan_complex_to_mag_2, "out", wlan_float_avg, "in")?;
 
     let wlan_mult_conj = fg.add_block(Combine::new(|a: &Complex32, b: &Complex32| a * b.conj()));
     let wlan_complex_avg = fg.add_block(WlanMovingAverage::<Complex32>::new(48));
     fg.connect_stream(selector, "out0", wlan_mult_conj, "in0")?;
+    //fg.connect_stream(src, "out", wlan_mult_conj, "in0")?;
     fg.connect_stream(wlan_delay, "out", wlan_mult_conj, "in1")?;
     fg.connect_stream(wlan_mult_conj, "out", wlan_complex_avg, "in")?;
 
@@ -132,9 +148,8 @@ fn main() -> Result<()>{
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
     fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
    
-
+    
     //Zigbee receiver
-    let zigbee_freq = zigbee_channel_to_freq(args.zigbee_channel)?;
     let mut last: Complex32 = Complex32::new(0.0, 0.0);
     let mut iir: f32 = 0.0;
     let alpha = 0.00016;
@@ -159,25 +174,28 @@ fn main() -> Result<()>{
     ));
 
     let zigbee_decoder = fg.add_block(ZigbeeDecoder::new(6));
-    //let zigbee_mac = fg.add_block(ZigbeeMac::new());
-    //let zigbee_snk = fg.add_block(NullSink::<u8>::new());
+    let zigbee_mac = fg.add_block(ZigbeeMac::new());
+    let zigbee_snk = fg.add_block(NullSink::<u8>::new());
     let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
 
-    fg.connect_stream(selector, "out1", avg, "in")?;
+    fg.connect_stream(selector, "out0", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    //fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
-    //fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
+    fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
+    fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
+    
 
 
 
      // Start the flowgraph and save the handle
-    let (_res, mut handle) = async_io::block_on(Runtime::new().start(fg));
+    let rt = Runtime::new();
+    rt.run(fg)?;
+    //let (_res, mut handle) = async_io::block_on(rt.start(fg));
 
     // Keep asking user for the selection
-    loop {
-        println!("Enter a new input index");
+    /*loop {
+        println!("Enter a new output index");
         // Get input from stdin and remove all whitespace (most importantly '\n' at the end)
         let mut input = String::new(); // Input buffer
         std::io::stdin()
@@ -187,12 +205,15 @@ fn main() -> Result<()>{
 
         // If the user entered a valid number, set the new frequency by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
+
             println!("Setting source index to {}", input);
             async_io::block_on(handle.call(selector, output_index_port_id, Pmt::U32(new_index)))?;
+            async_io::block_on(handle.call(src, freq_input_port_id, Pmt::F64(freq[new_index as usize])))?;
+            async_io::block_on(handle.call(src, sample_rate_input_port_id, Pmt::U32(sample_rate[new_index as usize] as u32)))?;
         } else {
             println!("Input not parsable: {}", input);
         }
     }
-
+    */
     Ok(())
 }
