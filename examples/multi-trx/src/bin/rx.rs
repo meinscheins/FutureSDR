@@ -27,7 +27,7 @@ use wlan::MovingAverage as WlanMovingAverage;
 use wlan::SyncLong as WlanSyncLong;
 use wlan::SyncShort as WlanSyncShort;
 
-use zigbee::channel_to_freq as zigbee_channel_to_freq;
+use zigbee::parse_channel as zigbee_parse_channel;
 use zigbee::ClockRecoveryMm as ZigbeeClockRecoveryMm;
 use zigbee::Decoder as ZigbeeDecoder;
 use zigbee::Mac as ZigbeeMac;
@@ -54,8 +54,8 @@ struct Args {
     #[clap(long, default_value_t = 4e6)]
     zigbee_sample_rate: f64,
     /// Zigbee Channel Number (11..26)
-    #[clap(long, default_value_t = 26)]
-    zigbee_channel: u32,
+    #[clap(long, value_parser= zigbee_parse_channel, default_value = "26")]
+    zigbee_channel: f64,
     // Drop policy to apply on the selector.
     #[clap(short, long, default_value = "same")]
     drop_policy: DropPolicy,
@@ -65,19 +65,18 @@ fn main() -> Result<()>{
     let args = Args::parse();
     println!("Configuration {:?}", args);
 
-    let zigbee_freq = zigbee_channel_to_freq(args.zigbee_channel)?;
-    let freq = [args.wlan_channel, zigbee_freq];
+    let freq = [args.wlan_channel, args.zigbee_channel];
 
     let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
 
     let mut fg = Flowgraph::new();
-
+    
     let selector = Selector::<Complex32, 1, 2>::new(args.drop_policy);
     let output_index_port_id = selector
         .message_input_name_to_id("output_index")
         .expect("No output_index port found!");
     let selector = fg.add_block(selector);
-
+    
     let mut soapy = SoapySourceBuilder::new()
         .freq(freq[0])
         .sample_rate(sample_rate[0])
@@ -97,8 +96,10 @@ fn main() -> Result<()>{
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
     let src = fg.add_block(soapy);
+    
     fg.connect_stream(src, "out", selector, "in0")?;
-
+    
+    /*
     //WLAN receiver
     let wlan_delay = fg.add_block(WlanDelay::<Complex32>::new(16));
     fg.connect_stream(selector, "out0", wlan_delay, "in")?;
@@ -147,8 +148,8 @@ fn main() -> Result<()>{
     fg.connect_message(wlan_decoder, "rx_frames", wlan_blob_to_udp, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
     fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
-   
     
+    */
     //Zigbee receiver
     let mut last: Complex32 = Complex32::new(0.0, 0.0);
     let mut iir: f32 = 0.0;
@@ -178,7 +179,8 @@ fn main() -> Result<()>{
     let zigbee_snk = fg.add_block(NullSink::<u8>::new());
     let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
 
-    fg.connect_stream(selector, "out0", avg, "in")?;
+    //fg.connect_stream(src, "out", avg, "in")?;
+    fg.connect_stream(selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
     fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
@@ -186,7 +188,9 @@ fn main() -> Result<()>{
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
     
 
-
+    let null_snk = fg.add_block(NullSink::<Complex32>::new());
+    println!("test");
+    fg.connect_stream(selector, "out0", null_snk, "in")?;
 
      // Start the flowgraph and save the handle
     let rt = Runtime::new();
