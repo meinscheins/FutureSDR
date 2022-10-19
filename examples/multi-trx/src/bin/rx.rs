@@ -42,7 +42,7 @@ struct Args {
     #[clap(short, long)]
     filter: Option<String>,
     /// Gain
-    #[clap(long, default_value_t = 60.0)]
+    #[clap(short, long, default_value_t = 60.0)]
     gain: f64,
     /// WLAN Sample Rate
     #[clap(long, default_value_t = 20e6)]
@@ -141,9 +141,9 @@ fn main() -> Result<()>{
     let wlan_decoder = fg.add_block(WlanDecoder::new());
     fg.connect_stream(wlan_frame_equalizer, "out", wlan_decoder, "in")?;
 
-    //let (wlan_tx_frame, mut wlan_rx_frame) = mpsc::channel::<Pmt>(100);
-    //let wlan_message_pipe = fg.add_block(MessagePipe::new(wlan_tx_frame));
-    //fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
+    let (wlan_tx_frame, mut wlan_rx_frame) = mpsc::channel::<Pmt>(100);
+    let wlan_message_pipe = fg.add_block(MessagePipe::new(wlan_tx_frame));
+    fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55555"));
     fg.connect_message(wlan_decoder, "rx_frames", wlan_blob_to_udp, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
@@ -198,6 +198,18 @@ fn main() -> Result<()>{
     //rt.run(fg)?;
     let (_res, mut handle) = async_io::block_on(rt.start(fg));
 
+    /*
+    rt.block_on(async move {
+        while let Some(x) = wlan_rx_frame.next().await {
+            match x {
+                Pmt::Blob(data) => {
+                    println!("received frame ({:?} bytes)", data.len());
+                }
+                _ => break,
+            }
+        }
+    });
+    */
     // Keep asking user for the selection
     loop {
         println!("Enter a new output index");
@@ -208,7 +220,7 @@ fn main() -> Result<()>{
             .expect("error: unable to read user input");
         input.retain(|c| !c.is_whitespace());
 
-        // If the user entered a valid number, set the new frequency by sending a message to the `FlowgraphHandle`
+        // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
 
             println!("Setting source index to {}", input);
