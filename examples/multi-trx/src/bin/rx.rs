@@ -2,9 +2,8 @@ use clap::Parser;
 use futuresdr::futures::channel::mpsc;
 use futuresdr::futures::StreamExt;
 
-use futuresdr::anyhow::{Context, Result};
+use futuresdr::anyhow::Result;
 use futuresdr::async_io;
-use futuresdr::async_io::block_on;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
@@ -87,8 +86,9 @@ fn main() -> Result<()>{
     if let Some(f) = args.filter {
         soapy = soapy.filter(f);
     }
-
     let soapy = soapy.build();
+
+    //message handler to change frequency and sample rate during runtime
     let freq_input_port_id = soapy
         .message_input_name_to_id("freq") 
         .expect("No freq port found!");
@@ -100,21 +100,21 @@ fn main() -> Result<()>{
     fg.connect_stream(src, "out", selector, "in0")?;
     
     
-    //WLAN receiver
+    
+    // ========================================
+    // WLAN RECEIVER
+    // ========================================
     let wlan_delay = fg.add_block(WlanDelay::<Complex32>::new(16));
     fg.connect_stream(selector, "out0", wlan_delay, "in")?;
-    //fg.connect_stream(src, "out", wlan_delay, "in")?;
 
     let wlan_complex_to_mag_2 = fg.add_block(Apply::new(|i: &Complex32| i.norm_sqr()));
     let wlan_float_avg = fg.add_block(WlanMovingAverage::<f32>::new(64));
     fg.connect_stream(selector, "out0", wlan_complex_to_mag_2, "in")?;
-    //fg.connect_stream(src, "out", wlan_complex_to_mag_2, "in")?;
     fg.connect_stream(wlan_complex_to_mag_2, "out", wlan_float_avg, "in")?;
 
     let wlan_mult_conj = fg.add_block(Combine::new(|a: &Complex32, b: &Complex32| a * b.conj()));
     let wlan_complex_avg = fg.add_block(WlanMovingAverage::<Complex32>::new(48));
     fg.connect_stream(selector, "out0", wlan_mult_conj, "in0")?;
-    //fg.connect_stream(src, "out", wlan_mult_conj, "in0")?;
     fg.connect_stream(wlan_delay, "out", wlan_mult_conj, "in1")?;
     fg.connect_stream(wlan_mult_conj, "out", wlan_complex_avg, "in")?;
 
@@ -150,7 +150,10 @@ fn main() -> Result<()>{
     fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
     
     
-    //Zigbee receiver
+    
+    // ========================================
+    // ZIGBEE RECEIVER
+    // ========================================
     let mut last: Complex32 = Complex32::new(0.0, 0.0);
     let mut iir: f32 = 0.0;
     let alpha = 0.00016;
@@ -179,7 +182,6 @@ fn main() -> Result<()>{
     let zigbee_snk = fg.add_block(NullSink::<u8>::new());
     let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
 
-    //fg.connect_stream(src, "out", avg, "in")?;
     fg.connect_stream(selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
@@ -187,19 +189,12 @@ fn main() -> Result<()>{
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
     
-    //for testing purposes
-    let null_snk0 = fg.add_block(NullSink::<Complex32>::new());
-    fg.connect_stream(selector, "out0", null_snk0, "in")?;
-    let null_snk1 = fg.add_block(NullSink::<Complex32>::new());
-    fg.connect_stream(selector, "out1", null_snk1, "in")?;
-
     // Start the flowgraph and save the handle
     let rt = Runtime::new();
-    //rt.run(fg)?;
     let (_res, mut handle) = async_io::block_on(rt.start(fg));
-
-    /*
-    rt.block_on(async move {
+    
+    //WLAN frame received message currently intterupts user input to select source
+    rt.spawn_background(async move {
         while let Some(x) = wlan_rx_frame.next().await {
             match x {
                 Pmt::Blob(data) => {
@@ -209,7 +204,8 @@ fn main() -> Result<()>{
             }
         }
     });
-    */
+    
+
     // Keep asking user for the selection
     loop {
         println!("Enter a new output index");
@@ -232,5 +228,4 @@ fn main() -> Result<()>{
         }
     }
     
-    Ok(())
 }

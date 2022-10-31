@@ -10,10 +10,6 @@ default-run = "rx"
 name = "rx"
 path = "src/bin/rx.rs"
 
-[[bin]]
-name = "test"
-path = "src/bin/test.rs"
-
 [dependencies]
 clap = { version = "3.1.18", features = ["derive"] }
 futuresdr = { path = "../..", features = ["soapy"] }
