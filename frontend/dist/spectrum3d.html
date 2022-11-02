@@ -142,8 +142,8 @@ Number.prototype.clamp = function(min, max) {
                                  .then(function (buff) {
                                      var data = new Float32Array(buff);
                                      /* console.log(data); */
-                                     var min = -30;
-                                     var max = 4;
+                                     var min = -2;
+                                     var max = 14;
                                      var i;
                                      for (i = 0; i < 2048; i++) {
                                          analyserView1.freqByteData[i] = (data[i].clamp(min, max)-min)/(max-min)*255;
