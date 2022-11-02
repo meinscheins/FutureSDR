@@ -11,7 +11,7 @@ use futuresdr::runtime::StreamIoBuilder;
 use futuresdr::runtime::WorkIo;
 
 pub struct Keep1InN {
-    alpha: f32,
+    _alpha: f32,
     n: usize,
     i: usize,
     avg: [f32; 2048],
@@ -28,7 +28,7 @@ impl Keep1InN {
                 .build(),
             MessageIoBuilder::new().build(),
             Self {
-                alpha,
+                _alpha: alpha,
                 n,
                 i: 0,
                 avg: [0.0; 2048],
@@ -57,6 +57,7 @@ impl Kernel for Keep1InN {
                 if (produced + 1) * 2048 <= output.len() {
                     output[produced * 2048..(produced + 1) * 2048].clone_from_slice(&self.avg);
                     self.i = 0;
+                    self.avg.fill(0.0);
                     produced += 1;
                 } else {
                     break;
@@ -66,10 +67,13 @@ impl Kernel for Keep1InN {
             for i in 0..2048 {
                 let t = input[consumed * 2048 + i];
                 if t.is_finite() {
-                    self.avg[i] = (1.0 - self.alpha) * self.avg[i] + self.alpha * t;
-                } else {
-                    self.avg[i] *= 1.0 - self.alpha;
+                    if t.total_cmp(&self.avg[i]) == std::cmp::Ordering::Greater {
+                        self.avg[i] = t;
+                    }
                 }
+                //else {
+                //    self.avg[i] *= 1.0 - self.alpha;
+                //}
             }
 
             consumed += 1;

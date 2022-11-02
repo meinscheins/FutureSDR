@@ -156,16 +156,19 @@ fn main() -> Result<()> {
         Circular::with_size(prefix_in_size),
     )?;
     let soapy_dev = Device::new("").unwrap();
-    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.45e9, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", args.tx_freq_offset, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.45e9, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", args.rx_freq_offset, "").unwrap();
+    soapy_dev.set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate).unwrap();
+    soapy_dev.set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate).unwrap();
+    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.46e9, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", 4e6, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.44e9, "").unwrap();
+    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", 4e6, "").unwrap();
+    //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9+4e6, "").unwrap();
+    //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9-4e6, "").unwrap();
 
     soapy_dev.set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true).unwrap();
     soapy_dev.set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true).unwrap();
     let mut soapy = SoapySinkBuilder::new()
         .device(soapy_dev.clone())
-        .sample_rate(args.sample_rate)
         .gain(args.tx_gain)
         .channel(args.soapy_tx_channel);
     if let Some(a) = args.tx_antenna {
@@ -188,7 +191,6 @@ fn main() -> Result<()> {
     // ============================================
     let mut soapy = SoapySourceBuilder::new()
         .device(soapy_dev)
-        .sample_rate(args.sample_rate)
         .gain(args.rx_gain)
         .channel(args.soapy_rx_channel);
     if let Some(a) = args.rx_antenna {
@@ -250,7 +252,7 @@ fn main() -> Result<()> {
         );
         let fft = fg.add_block(Fft::new(2048));
         let shift = fg.add_block(FftShift::new());
-        let keep = fg.add_block(Keep1InN::new(0.5, 10));
+        let keep = fg.add_block(Keep1InN::new(0.1, 4));
         let cpy = fg.add_block(futuresdr::blocks::Copy::<Complex32>::new());
 
         fg.connect_stream(src, "out", cpy, "in")?;
