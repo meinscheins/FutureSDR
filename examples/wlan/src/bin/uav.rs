@@ -165,6 +165,14 @@ fn main() -> Result<()> {
     //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9+4e6, "").unwrap();
     //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9-4e6, "").unwrap();
 
+    // config hardcoded for uav
+    // soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.44e9, "").unwrap();
+    // soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", -4e6, "").unwrap();
+    // soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.46e9, "").unwrap();
+    // soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", -4e6, "").unwrap();
+    // //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9-4e6, "").unwrap();
+    // //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9+4e6, "").unwrap();
+
     soapy_dev.set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true).unwrap();
     soapy_dev.set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true).unwrap();
     let mut soapy = SoapySinkBuilder::new()
@@ -355,7 +363,7 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        //println!("received frame size {}", v.len() - 24);
+                        println!("received frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
