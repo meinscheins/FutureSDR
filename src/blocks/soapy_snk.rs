@@ -85,6 +85,15 @@ impl SoapySink {
                                     *f as f64,
                                     (),
                                 )?;
+                            } else if let Pmt::F64(ref f) = &p {
+                                block.dev.as_mut().context("no dev")?.set_frequency(
+                                    Tx,
+                                    0,
+                                    *f,
+                                    (),
+                                )?;
+                            } else {
+                                warn!("SoapySource/freq Handler received wrong PMT {:?}", &p);
                             }
                             Ok(p)
                         }
@@ -104,6 +113,14 @@ impl SoapySink {
                                     .as_mut()
                                     .context("no dev")?
                                     .set_sample_rate(Tx, 0, *r as f64)?;
+                            } else if let Pmt::F64(ref r) = &p {
+                                block
+                                    .dev
+                                    .as_mut()
+                                    .context("no dev")?
+                                    .set_sample_rate(Tx, 0, *r)?;
+                            } else {
+                                warn!("SoapySource/freq Handler received wrong PMT {:?}", &p);
                             }
                             Ok(p)
                         }
