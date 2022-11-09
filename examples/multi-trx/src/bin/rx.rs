@@ -218,11 +218,10 @@ fn main() -> Result<()>{
 
         // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
-
             println!("Setting source index to {}", input);
-            async_io::block_on(handle.call(selector, output_index_port_id, Pmt::U32(new_index)))?;
             async_io::block_on(handle.call(src, freq_input_port_id, Pmt::F64(freq[new_index as usize])))?;
             async_io::block_on(handle.call(src, sample_rate_input_port_id, Pmt::U32(sample_rate[new_index as usize] as u32)))?;
+            async_io::block_on(handle.call(selector, output_index_port_id, Pmt::U32(new_index)))?;
         } else {
             println!("Input not parsable: {}", input);
         }
