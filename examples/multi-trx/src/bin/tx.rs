@@ -54,7 +54,7 @@ struct Args {
     #[clap(long, value_parser= zigbee_parse_channel, default_value = "26")]
     zigbee_channel: f64,
     // Drop policy to apply on the selector.
-    #[clap(short, long, default_value = "same")]
+    #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
 }
 
@@ -175,7 +175,7 @@ fn main() -> Result<()>{
 
     let (sender, receiver) = channel();    
 
-    let mut mode = 1;
+    let mut mode = 0;
 
     rt.spawn_background(async move {
         loop {
@@ -186,6 +186,7 @@ fn main() -> Result<()>{
             println!("Mode {:?}", mode);
             //WLAN message
             //if mode == 0 {
+                
                 handle
                     .call(
                         wlan_mac,
@@ -197,6 +198,7 @@ fn main() -> Result<()>{
                     )
                     .await
                     .unwrap();
+                   
             //}
             //Zigbee message
             //if mode == 1 {
@@ -229,11 +231,34 @@ fn main() -> Result<()>{
 
             println!("Setting source index to {}", input);
             sender.send(new_index)?;
-            async_io::block_on(input_handle.call(sink, freq_input_port_id, Pmt::F64(freq[new_index as usize])))?;
+            async_io::block_on(
+                input_handle
+                    .call(
+                        sink, 
+                        freq_input_port_id, 
+                        Pmt::F64(freq[new_index as usize])
+                    )
+                )?;
             println!("Set frequency to {:?}", freq[new_index as usize]);
-            async_io::block_on(input_handle.call(sink, sample_rate_input_port_id, Pmt::U32(sample_rate[new_index as usize] as u32)))?;
+            
+            async_io::block_on(
+                input_handle
+                    .call(
+                        sink, 
+                        sample_rate_input_port_id, 
+                        Pmt::F64(sample_rate[new_index as usize])
+                    )
+                )?;
             println!("Set  sample rate to {:?}", sample_rate[new_index as usize]);
-            async_io::block_on(input_handle.call(selector, input_index_port_id, Pmt::U32(new_index)))?;
+            
+            async_io::block_on(
+                input_handle
+                    .call(
+                        selector, 
+                        input_index_port_id, 
+                        Pmt::U32(new_index)
+                    )
+                )?;
             println!("Set selector input to {:?}", new_index);
         } else {
             println!("Input not parsable: {}", input);
