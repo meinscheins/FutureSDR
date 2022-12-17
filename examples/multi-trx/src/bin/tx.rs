@@ -185,8 +185,7 @@ fn main() -> Result<()>{
             }
             println!("Mode {:?}", mode);
             //WLAN message
-            //if mode == 0 {
-                
+            if mode == 0 {
                 handle
                     .call(
                         wlan_mac,
@@ -197,11 +196,10 @@ fn main() -> Result<()>{
                         ))),
                     )
                     .await
-                    .unwrap();
-                   
-            //}
+                    .unwrap();   
+            }
             //Zigbee message
-            //if mode == 1 {
+            if mode == 1 {
                 handle
                     .call(
                         zigbee_mac,
@@ -210,8 +208,7 @@ fn main() -> Result<()>{
                     )
                     .await
                     .unwrap();
-            
-            //}
+            }
             seq += 1;
         }
     });
@@ -229,8 +226,9 @@ fn main() -> Result<()>{
         // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
 
-            println!("Setting source index to {}", input);
             sender.send(new_index)?;
+            println!("Setting source index to {}", input);
+
             async_io::block_on(
                 input_handle
                     .call(
