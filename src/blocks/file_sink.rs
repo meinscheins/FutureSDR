@@ -69,7 +69,7 @@ impl<T: Send + 'static> Kernel for FileSink<T> {
         _mio: &mut MessageIo<Self>,
         _meta: &mut BlockMeta,
     ) -> Result<()> {
-        let i = sio.input(0).slice::<u8>();
+        let i = sio.input(0).slice_unchecked::<u8>();
 
         let item_size = std::mem::size_of::<T>();
         let items = i.len() / item_size;
@@ -78,7 +78,7 @@ impl<T: Send + 'static> Kernel for FileSink<T> {
             let i = &i[..items * item_size];
             match self.file.as_mut().unwrap().write_all(i).await {
                 Ok(()) => {}
-                Err(e) => panic!("FileSink: writing to {:?} failed: {:?}", self.file_name, e),
+                Err(e) => panic!("FileSink: writing to {:?} failed: {e:?}", self.file_name),
             }
         }
 

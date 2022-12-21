@@ -1,5 +1,3 @@
-#[cfg(not(target_arch = "wasm32"))]
-use axum::Router;
 use futures::channel::mpsc::Sender;
 use futures::channel::oneshot;
 use futures::SinkExt;
@@ -8,6 +6,7 @@ use futuresdr_pmt::FlowgraphDescription;
 use std::cmp::{Eq, PartialEq};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::result;
 
 use crate::anyhow::Result;
 #[cfg(not(target_arch = "wasm32"))]
@@ -17,7 +16,9 @@ use crate::runtime::buffer::slab::Slab;
 use crate::runtime::buffer::BufferBuilder;
 use crate::runtime::buffer::BufferWriter;
 use crate::runtime::Block;
+use crate::runtime::BlockDescriptionError;
 use crate::runtime::BlockMessage;
+use crate::runtime::CallbackError;
 use crate::runtime::FlowgraphMessage;
 use crate::runtime::Kernel;
 use crate::runtime::Pmt;
@@ -29,8 +30,6 @@ use crate::runtime::Topology;
 /// There is at least one source and one sink in every Flowgraph.
 pub struct Flowgraph {
     pub(crate) topology: Option<Topology>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) custom_routes: Option<Router>,
 }
 
 impl Flowgraph {
@@ -38,8 +37,6 @@ impl Flowgraph {
     pub fn new() -> Flowgraph {
         Flowgraph {
             topology: Some(Topology::new()),
-            #[cfg(not(target_arch = "wasm32"))]
-            custom_routes: None,
         }
     }
 
@@ -47,23 +44,18 @@ impl Flowgraph {
         self.topology.as_mut().unwrap().add_block(block)
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn set_custom_routes(&mut self, routes: Router) {
-        self.custom_routes = Some(routes);
-    }
-
     pub fn connect_stream(
         &mut self,
         src_block: usize,
-        src_port: &str,
+        src_port: impl Into<PortId>,
         dst_block: usize,
-        dst_port: &str,
+        dst_port: impl Into<PortId>,
     ) -> Result<()> {
         self.topology.as_mut().unwrap().connect_stream(
             src_block,
-            src_port,
+            src_port.into(),
             dst_block,
-            dst_port,
+            dst_port.into(),
             DefaultBuffer::new(),
         )
     }
@@ -71,28 +63,33 @@ impl Flowgraph {
     pub fn connect_stream_with_type<B: BufferBuilder + Debug + Eq + Hash>(
         &mut self,
         src_block: usize,
-        src_port: &str,
+        src_port: impl Into<PortId>,
         dst_block: usize,
-        dst_port: &str,
+        dst_port: impl Into<PortId>,
         buffer: B,
     ) -> Result<()> {
-        self.topology
-            .as_mut()
-            .unwrap()
-            .connect_stream(src_block, src_port, dst_block, dst_port, buffer)
+        self.topology.as_mut().unwrap().connect_stream(
+            src_block,
+            src_port.into(),
+            dst_block,
+            dst_port.into(),
+            buffer,
+        )
     }
 
     pub fn connect_message(
         &mut self,
         src_block: usize,
-        src_port: &str,
+        src_port: impl Into<PortId>,
         dst_block: usize,
-        dst_port: &str,
+        dst_port: impl Into<PortId>,
     ) -> Result<()> {
-        self.topology
-            .as_mut()
-            .unwrap()
-            .connect_message(src_block, src_port, dst_block, dst_port)
+        self.topology.as_mut().unwrap().connect_message(
+            src_block,
+            src_port.into(),
+            dst_block,
+            dst_port.into(),
+        )
     }
 
     pub fn kernel<T: Kernel + 'static>(&self, id: usize) -> Option<&T> {
@@ -116,6 +113,30 @@ impl Default for Flowgraph {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum PortId {
+    Index(usize),
+    Name(String),
+}
+
+impl From<usize> for PortId {
+    fn from(item: usize) -> Self {
+        PortId::Index(item)
+    }
+}
+
+impl From<&str> for PortId {
+    fn from(item: &str) -> Self {
+        PortId::Name(item.to_string())
+    }
+}
+
+impl From<String> for PortId {
+    fn from(item: String) -> Self {
+        PortId::Name(item)
+    }
+}
+
 #[derive(Clone)]
 pub struct FlowgraphHandle {
     inbox: Sender<FlowgraphMessage>,
@@ -126,29 +147,42 @@ impl FlowgraphHandle {
         FlowgraphHandle { inbox }
     }
 
-    pub async fn call(&mut self, block_id: usize, port_id: usize, data: Pmt) -> Result<()> {
+    pub async fn call(
+        &mut self,
+        block_id: usize,
+        port_id: impl Into<PortId>,
+        data: Pmt,
+    ) -> result::Result<(), CallbackError> {
+        let (tx, rx) = oneshot::channel::<result::Result<(), CallbackError>>();
         self.inbox
             .send(FlowgraphMessage::BlockCall {
                 block_id,
-                port_id,
-                data,
-            })
-            .await?;
-        Ok(())
-    }
-
-    pub async fn callback(&mut self, block_id: usize, port_id: usize, data: Pmt) -> Result<Pmt> {
-        let (tx, rx) = oneshot::channel::<Pmt>();
-        self.inbox
-            .send(FlowgraphMessage::BlockCallback {
-                block_id,
-                port_id,
+                port_id: port_id.into(),
                 data,
                 tx,
             })
-            .await?;
-        let p = rx.await?;
-        Ok(p)
+            .await
+            .map_err(|_| CallbackError::InvalidBlock)?;
+        rx.await.map_err(|_| CallbackError::HandlerError)?
+    }
+
+    pub async fn callback(
+        &mut self,
+        block_id: usize,
+        port_id: impl Into<PortId>,
+        data: Pmt,
+    ) -> result::Result<Pmt, CallbackError> {
+        let (tx, rx) = oneshot::channel::<result::Result<Pmt, CallbackError>>();
+        self.inbox
+            .send(FlowgraphMessage::BlockCallback {
+                block_id,
+                port_id: port_id.into(),
+                data,
+                tx,
+            })
+            .await
+            .map_err(|_| CallbackError::InvalidBlock)?;
+        rx.await.map_err(|_| CallbackError::HandlerError)?
     }
 
     pub async fn description(&mut self) -> Result<FlowgraphDescription> {
@@ -161,11 +195,12 @@ impl FlowgraphHandle {
     }
 
     pub async fn block_description(&mut self, block_id: usize) -> Result<BlockDescription> {
-        let (tx, rx) = oneshot::channel::<BlockDescription>();
+        let (tx, rx) =
+            oneshot::channel::<result::Result<BlockDescription, BlockDescriptionError>>();
         self.inbox
             .send(FlowgraphMessage::BlockDescription { block_id, tx })
             .await?;
-        let d = rx.await?;
+        let d = rx.await??;
         Ok(d)
     }
 

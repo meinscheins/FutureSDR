@@ -10,8 +10,7 @@ description = "Web Frontend for an Experimental Async SDR Runtime for Heterogene
 keywords = ["sdr", "radio", "runtime", "async", "acceleration"]
 categories = ["asynchronous", "concurrency", "hardware-support", "science", "wasm"]
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+[workspace]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -19,7 +18,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 console_error_panic_hook = "0.1.6"
 futures = "0.3.19"
-futuresdr-pmt = { path = "../pmt", version = "0.0.6" }
+futuresdr-pmt = { path = "../pmt", version = "0.0.7" }
 gloo-console = "0.2.1"
 gloo-render = "0.1.0"
 gloo-timers = { version = "0.2.2", features = ["futures"] }

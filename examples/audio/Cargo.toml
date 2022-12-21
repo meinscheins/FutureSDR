@@ -22,6 +22,6 @@ name = "play-selectable-tone"
 path = "play_selectable_tone.rs"
 
 [dependencies]
-futuresdr = { path = "../..", features = ["audio"] }
-clap = { version = "3.0.13", features = ["derive"] }
+futuresdr = { path = "../..", features = ["audio", "zeromq"] }
+clap = { version = "4.0.19", features = ["derive"] }
 

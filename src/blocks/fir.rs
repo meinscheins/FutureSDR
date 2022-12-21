@@ -18,8 +18,8 @@ pub struct Fir<InputType, OutputType, TapType, Core>
 where
     InputType: 'static + Send,
     OutputType: 'static + Send,
-    TapType: 'static,
-    Core: 'static + UnaryKernel<InputType, OutputType>,
+    TapType: 'static + Send,
+    Core: 'static + UnaryKernel<InputType, OutputType> + Send,
 {
     core: Core,
     _input_type: std::marker::PhantomData<InputType>,
@@ -27,21 +27,12 @@ where
     _tap_type: std::marker::PhantomData<TapType>,
 }
 
-unsafe impl<InputType, OutputType, TapType, Core> Send for Fir<InputType, OutputType, TapType, Core>
-where
-    InputType: 'static + Send,
-    OutputType: 'static + Send,
-    TapType: 'static,
-    Core: 'static + UnaryKernel<InputType, OutputType>,
-{
-}
-
 impl<InputType, OutputType, TapType, Core> Fir<InputType, OutputType, TapType, Core>
 where
     InputType: 'static + Send,
     OutputType: 'static + Send,
-    TapType: 'static,
-    Core: 'static + UnaryKernel<InputType, OutputType>,
+    TapType: 'static + Send,
+    Core: 'static + UnaryKernel<InputType, OutputType> + Send,
 {
     pub fn new(core: Core) -> Block {
         Block::new(
@@ -67,8 +58,8 @@ impl<InputType, OutputType, TapType, Core> Kernel for Fir<InputType, OutputType,
 where
     InputType: 'static + Send,
     OutputType: 'static + Send,
-    TapType: 'static,
-    Core: 'static + UnaryKernel<InputType, OutputType>,
+    TapType: 'static + Send,
+    Core: 'static + UnaryKernel<InputType, OutputType> + Send,
 {
     async fn work(
         &mut self,
@@ -122,11 +113,11 @@ where
 ///
 /// let mut fg = Flowgraph::new();
 ///
-/// let fir = fg.add_block(FirBuilder::new::<f32, f32, f32, _>([1.0, 2.0, 3.0]));
-/// let fir = fg.add_block(FirBuilder::new::<Complex<f32>, Complex<f32>, f32, _>(&[1.0, 2.0, 3.0]));
-/// let fir = fg.add_block(FirBuilder::new::<f32, f32, f32, _>(vec![1.0, 2.0, 3.0]));
+/// let fir = fg.add_block(FirBuilder::new::<f32, f32, f32, [f32; 3]>([1.0, 2.0, 3.0]));
+/// let fir = fg.add_block(FirBuilder::new::<Complex<f32>, Complex<f32>, f32, _>(&[1.0f32, 2.0, 3.0]));
+/// let fir = fg.add_block(FirBuilder::new::<f32, f32, f32, Vec<f32>>(vec![1.0, 2.0, 3.0]));
 ///
-/// let fir = fg.add_block(FirBuilder::new_resampling_with_taps::<f32, f32, f32, _>(3, 2, vec![1.0, 2.0, 3.0]));
+/// let fir = fg.add_block(FirBuilder::new_resampling_with_taps::<f32, f32, f32, _>(3, 2, vec![1.0f32, 2.0, 3.0]));
 /// ```
 pub struct FirBuilder {
     //
@@ -138,10 +129,10 @@ impl FirBuilder {
     where
         InputType: 'static + Send,
         OutputType: 'static + Send,
-        TapType: 'static,
-        Taps: 'static + TapsAccessor<TapType = TapType>,
+        TapType: 'static + Send,
+        Taps: 'static + TapsAccessor<TapType = TapType> + Send,
         NonResamplingFirKernel<InputType, OutputType, Taps, TapType>:
-            UnaryKernel<InputType, OutputType>,
+            UnaryKernel<InputType, OutputType> + Send,
     {
         Fir::<
             InputType,
@@ -181,10 +172,10 @@ impl FirBuilder {
     where
         InputType: 'static + Send,
         OutputType: 'static + Send,
-        TapType: 'static,
-        Taps: 'static + TapsAccessor<TapType = TapType>,
+        TapType: 'static + Send,
+        Taps: 'static + TapsAccessor<TapType = TapType> + Send,
         PolyphaseResamplingFirKernel<InputType, OutputType, Taps, TapType>:
-            UnaryKernel<InputType, OutputType>,
+            UnaryKernel<InputType, OutputType> + Send,
     {
         Fir::<
             InputType,

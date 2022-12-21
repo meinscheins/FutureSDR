@@ -87,13 +87,13 @@ where
     pub fn new(drop_policy: DropPolicy) -> Block {
         let mut stream_builder = StreamIoBuilder::new();
         for i in 0..N {
-            stream_builder = stream_builder.add_input::<A>(format!("in{}", i).as_str());
+            stream_builder = stream_builder.add_input::<A>(format!("in{i}").as_str());
         }
         for i in 0..M {
-            stream_builder = stream_builder.add_output::<A>(format!("out{}", i).as_str());
+            stream_builder = stream_builder.add_output::<A>(format!("out{i}").as_str());
         }
         Block::new(
-            BlockMetaBuilder::new(format!("Selector<{}, {}>", N, M)).build(),
+            BlockMetaBuilder::new(format!("Selector<{N}, {M}>")).build(),
             stream_builder.build(),
             MessageIoBuilder::<Self>::new()
                 .add_input(
@@ -154,8 +154,8 @@ where
         _mio: &mut MessageIo<Self>,
         _meta: &mut BlockMeta,
     ) -> Result<()> {
-        let i = sio.input(self.input_index).slice::<u8>();
-        let o = sio.output(self.output_index).slice::<u8>();
+        let i = sio.input(self.input_index).slice_unchecked::<u8>();
+        let o = sio.output(self.output_index).slice_unchecked::<u8>();
         let item_size = std::mem::size_of::<A>();
 
         let m = cmp::min(i.len(), o.len());

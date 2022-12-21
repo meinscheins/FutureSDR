@@ -2,9 +2,9 @@ use clap::Parser;
 use futuresdr::anyhow::Result;
 use futuresdr::async_io;
 use futuresdr::blocks::audio::AudioSink;
-use futuresdr::blocks::Oscillator;
 use futuresdr::blocks::Selector;
 use futuresdr::blocks::SelectorDropPolicy as DropPolicy;
+use futuresdr::blocks::SignalSourceBuilder;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
@@ -18,12 +18,16 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    println!("Configuration {:?}", args);
+    println!("Configuration {args:?}");
 
     let mut fg = Flowgraph::new();
 
-    let src0 = Oscillator::new(440.0, 0.3, 48000.0);
-    let src1 = Oscillator::new(261.63, 0.3, 48000.0);
+    let src0 = SignalSourceBuilder::<f32>::sin(440.0, 48000.0)
+        .amplitude(0.3)
+        .build();
+    let src1 = SignalSourceBuilder::<f32>::sin(261.63, 48000.0)
+        .amplitude(0.3)
+        .build();
     let selector = Selector::<f32, 2, 1>::new(args.drop_policy);
     // Store the `input_index` port ID for later use
     let input_index_port_id = selector
@@ -53,12 +57,18 @@ fn main() -> Result<()> {
             .expect("error: unable to read user input");
         input.retain(|c| !c.is_whitespace());
 
+        if input.eq("quit") {
+            break;
+        }
+
         // If the user entered a valid number, set the new frequency by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
-            println!("Setting source index to {}", input);
+            println!("Setting source index to {input}");
             async_io::block_on(handle.call(selector, input_index_port_id, Pmt::U32(new_index)))?;
         } else {
-            println!("Input not parsable: {}", input);
+            println!("Input not parsable: {input}");
         }
     }
+
+    Ok(())
 }

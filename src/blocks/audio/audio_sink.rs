@@ -28,6 +28,7 @@ pub struct AudioSink {
     tx: Option<mpsc::Sender<Vec<f32>>>,
 }
 
+// cpal::Stream is !Send
 #[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for AudioSink {}
 
@@ -133,7 +134,7 @@ impl Kernel for AudioSink {
                     }
                 },
                 move |err| {
-                    panic!("cpal stream error {:?}", err);
+                    panic!("cpal stream error {err:?}");
                 },
             )
             .expect("could not build output stream");

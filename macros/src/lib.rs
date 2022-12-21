@@ -151,12 +151,28 @@ pub fn connect(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
     // Stream connections
     for (src, src_port, dst, dst_port) in stream_connections.into_iter() {
+        let src_port = match src_port.parse::<usize>() {
+            Ok(s) => quote!(#s),
+            Err(_) => quote!(#src_port),
+        };
+        let dst_port = match dst_port.parse::<usize>() {
+            Ok(s) => quote!(#s),
+            Err(_) => quote!(#dst_port),
+        };
         out.extend(quote! {
             #fg.connect_stream(#src, #src_port, #dst, #dst_port)?;
         });
     }
     // Message connections
     for (src, src_port, dst, dst_port) in message_connections.into_iter() {
+        let src_port = match src_port.parse::<usize>() {
+            Ok(s) => quote!(#s),
+            Err(_) => quote!(#src_port),
+        };
+        let dst_port = match dst_port.parse::<usize>() {
+            Ok(s) => quote!(#s),
+            Err(_) => quote!(#dst_port),
+        };
         out.extend(quote! {
             #fg.connect_message(#src, #src_port, #dst, #dst_port)?;
         });
@@ -371,6 +387,43 @@ fn next_endpoint(attrs: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Endpo
 /// ```
 #[proc_macro_attribute]
 pub fn message_handler(
+    _attr: proc_macro::TokenStream,
+    fun: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let handler: syn::ItemFn = syn::parse(fun).unwrap();
+    let mut out = TokenStream::new();
+
+    let name = handler.sig.ident;
+    let mio = get_parameter_ident(&handler.sig.inputs[1]).unwrap();
+    let meta = get_parameter_ident(&handler.sig.inputs[2]).unwrap();
+    let pmt = get_parameter_ident(&handler.sig.inputs[3]).unwrap();
+    let body = handler.block.stmts;
+
+    // println!("name {}", name);
+    // println!("mio {}", mio);
+    // println!("meta {}", meta);
+    // println!("pmt {}", pmt);
+
+    out.extend(quote! {
+        fn #name<'a>(
+            &'a mut self,
+            #mio: &'a mut MessageIo<Self>,
+            #meta: &'a mut BlockMeta,
+            #pmt: Pmt,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Pmt>> + Send + 'a>> {
+            use crate::futures::FutureExt;
+            async move {
+                #(#body)*
+            }.boxed()
+        }
+    });
+
+    // println!("out: {}", out);
+    out.into()
+}
+
+#[proc_macro_attribute]
+pub fn message_handler_external(
     _attr: proc_macro::TokenStream,
     fun: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {

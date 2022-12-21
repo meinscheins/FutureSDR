@@ -7,6 +7,7 @@
 //! | [ApplyNM] | Apply a function to each N input samples, producing M output samples. | ✅ |
 //! | [Combine] | Apply a function to combine two streams into one. | ✅ |
 //! | [Filter] | Apply a function, returning an [Option] to allow filtering samples. | ✅ |
+//! | [Sink] | Apply a function to received samples. | ✅ |
 //! | [Source] | Repeatedly apply a function to generate samples. | ✅ |
 //! | [Split] | Apply a function to split a stream. | ✅ |
 //! | [FiniteSource] | Repeatedly apply a function to generate samples, using [Option] values to allow termination. | ✅ |
@@ -14,6 +15,7 @@
 //! ## DSP blocks
 //! | Block | Usage | WebAssembly? |
 //! |---|---|---|
+//! | [Agc](Agc) | Automatic Gain Control | ✅ |
 //! | [Fft](Fft) | Compute an FFT. | ✅ |
 //! | [Fir](FirBuilder) | FIR filter and resampler. | ✅ |
 //! | [Iir](IirBuilder) | IIR filter. | ✅ |
@@ -85,7 +87,7 @@
 //! ## Signal Sources
 //! | Block | Usage | WebAssembly? |
 //! |---|---|---|
-//! | [Oscillator](Oscillator) | Create sine tone. | ✅ |
+//! | [SignalSource](SignalSourceBuilder) | Create signals (sin, cos, square). | ✅ |
 //!
 //! ## Audio (requires `audio` feature)
 //! | Block | Usage | WebAssembly? |
@@ -95,6 +97,12 @@
 //! | [FileSource](audio::FileSource) | Read an audio file and output its samples. | ❌ |
 //! | [WavSink](audio::WavSink) | Writes samples to a WAV file | ❌ |
 //!
+
+#[cfg(feature = "aaronia")]
+pub mod aaronia;
+
+mod agc;
+pub use agc::{Agc, AgcBuilder};
 
 mod apply;
 pub use apply::Apply;
@@ -174,22 +182,21 @@ pub use null_sink::NullSink;
 mod null_source;
 pub use null_source::NullSource;
 
-mod oscillator;
-pub use oscillator::Oscillator;
-
 #[cfg(feature = "soapy")]
-pub(self) mod soapy_snk;
+pub mod soapy;
 #[cfg(feature = "soapy")]
-pub use soapy_snk::{SoapySink, SoapySinkBuilder};
-#[cfg(feature = "soapy")]
-mod soapy_src;
-#[cfg(feature = "soapy")]
-pub use soapy_src::{SoapySource, SoapySourceBuilder};
+pub use soapy::{SoapySink, SoapySinkBuilder, SoapySource, SoapySourceBuilder};
 
 mod selector;
 pub use selector::DropPolicy as SelectorDropPolicy;
 pub use selector::Selector;
 
+pub mod signal_source;
+pub use signal_source::FixedPointPhase;
+pub use signal_source::SignalSourceBuilder;
+
+pub mod sink;
+pub use sink::Sink;
 mod source;
 pub use source::Source;
 mod split;
