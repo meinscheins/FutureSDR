@@ -6,6 +6,7 @@ use futuresdr::async_io::block_on;
 use futuresdr::async_io::Timer;
 use futuresdr::async_net::SocketAddr;
 use futuresdr::async_net::UdpSocket;
+use futuresdr::blocks::soapy::SoapyDevSpec::Dev;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
@@ -111,7 +112,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    println!("Configuration: {:?}", args);
+    println!("Configuration: {args:?}");
 
     let mut size = 4096;
     let prefix_in_size = loop {
@@ -156,12 +157,24 @@ fn main() -> Result<()> {
         Circular::with_size(prefix_in_size),
     )?;
     let soapy_dev = Device::new("").unwrap();
-    soapy_dev.set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate).unwrap();
-    soapy_dev.set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate).unwrap();
-    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.46e9, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", 4e6, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.44e9, "").unwrap();
-    soapy_dev.set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", 4e6, "").unwrap();
+    soapy_dev
+        .set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate)
+        .unwrap();
+    soapy_dev
+        .set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate)
+        .unwrap();
+    soapy_dev
+        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.46e9, "")
+        .unwrap();
+    soapy_dev
+        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", 4e6, "")
+        .unwrap();
+    soapy_dev
+        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.44e9, "")
+        .unwrap();
+    soapy_dev
+        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", 4e6, "")
+        .unwrap();
     //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9+4e6, "").unwrap();
     //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9-4e6, "").unwrap();
 
@@ -173,12 +186,16 @@ fn main() -> Result<()> {
     // //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9-4e6, "").unwrap();
     // //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9+4e6, "").unwrap();
 
-    soapy_dev.set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true).unwrap();
-    soapy_dev.set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true).unwrap();
+    soapy_dev
+        .set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true)
+        .unwrap();
+    soapy_dev
+        .set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true)
+        .unwrap();
     let mut soapy = SoapySinkBuilder::new()
-        .device(soapy_dev.clone())
+        .device(Dev(soapy_dev.clone()))
         .gain(args.tx_gain)
-        .channel(args.soapy_tx_channel);
+        .cfg_channel(args.soapy_tx_channel);
     if let Some(a) = args.tx_antenna {
         soapy = soapy.antenna(a);
     }
@@ -198,9 +215,9 @@ fn main() -> Result<()> {
     // RECEIVER
     // ============================================
     let mut soapy = SoapySourceBuilder::new()
-        .device(soapy_dev)
+        .device(Dev(soapy_dev))
         .gain(args.rx_gain)
-        .channel(args.soapy_rx_channel);
+        .cfg_channel(args.soapy_rx_channel);
     if let Some(a) = args.rx_antenna {
         soapy = soapy.antenna(a);
     }
@@ -284,7 +301,7 @@ fn main() -> Result<()> {
                     .call(
                         mac,
                         0,
-                        Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
+                        Pmt::Blob(format!("FutureSDR {seq}").as_bytes().to_vec()),
                     )
                     .await
                     .unwrap();
@@ -354,7 +371,7 @@ fn main() -> Result<()> {
                             .await
                             .unwrap()
                     }
-                    Err(e) => println!("ERROR: {:?}", e),
+                    Err(e) => println!("ERROR: {e:?}"),
                 }
             }
         });

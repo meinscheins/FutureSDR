@@ -66,10 +66,8 @@ impl Kernel for Keep1InN {
 
             for i in 0..2048 {
                 let t = input[consumed * 2048 + i];
-                if t.is_finite() {
-                    if t.total_cmp(&self.avg[i]) == std::cmp::Ordering::Greater {
-                        self.avg[i] = t;
-                    }
+                if t.is_finite() && t.total_cmp(&self.avg[i]) == std::cmp::Ordering::Greater {
+                    self.avg[i] = t;
                 }
                 //else {
                 //    self.avg[i] *= 1.0 - self.alpha;
