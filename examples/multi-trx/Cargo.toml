@@ -1,0 +1,29 @@
+[package]
+name = "multi-trx"
+version = "0.1.0"
+edition = "2021"
+default-run = "rx"
+
+[workspace]
+
+[[bin]]
+name = "rx"
+path = "src/bin/rx.rs"
+
+[[bin]]
+name = "tx"
+path = "src/bin/tx.rs"
+
+[[bin]]
+name = "trx"
+path = "src/bin/trx.rs"
+
+[[bin]]
+name = "loopback"
+path = "src/bin/loopback.rs"
+
+[dependencies]
+clap = { version = "3.1.18", features = ["derive"] }
+futuresdr = { path = "../..", features = ["soapy"] }
+zigbee = { path = "../zigbee"}
+wlan = { path = "../wlan"}
