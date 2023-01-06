@@ -13,12 +13,11 @@ use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
 use futuresdr::blocks::FftDirection;
+use futuresdr::blocks::FirBuilder;
 use futuresdr::blocks::MessagePipe;
 use futuresdr::blocks::NullSink;
 use futuresdr::blocks::Selector;
 use futuresdr::blocks::SelectorDropPolicy as DropPolicy;
-use futuresdr::blocks::SoapySinkBuilder;
-use futuresdr::blocks::SoapySourceBuilder;
 use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::buffer::circular::Circular;
 use futuresdr::runtime::Flowgraph;
@@ -27,7 +26,6 @@ use futuresdr::runtime::Runtime;
 
 
 use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
-use wlan::parse_channel as wlan_parse_channel;
 use wlan::Decoder as WlanDecoder;
 use wlan::Delay as WlanDelay;
 use wlan::Encoder as WlanEncoder;
@@ -40,8 +38,6 @@ use wlan::Prefix as WlanPrefix;
 use wlan::SyncLong as WlanSyncLong;
 use wlan::SyncShort as WlanSyncShort;
 
-
-use zigbee::parse_channel as zigbee_parse_channel;
 use zigbee::modulator as zigbee_modulator;
 use zigbee::IqDelay as ZigbeeIqDelay;
 use zigbee::Mac as ZigbeeMac;
@@ -51,33 +47,8 @@ use zigbee::Decoder as ZigbeeDecoder;
 #[derive(Parser, Debug)]
 #[clap(version)]
 struct Args {
-    /// Soapy Filter
-    #[clap(short, long)]
-    filter: Option<String>,
-    /// RX Gain
-    #[clap(long, default_value_t = 50.0)]
-    rx_gain: f64,
-    /// TX Gain
-    #[clap(long, default_value_t = 18.0)]
-    tx_gain: f64,
-    /// Zigbee RX Channel
-    #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_rx_freq: f64,
-    /// Zigbee TX Channel
-    #[clap(id = "zigbee-tx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_tx_freq: f64,
-    /// Zigbee Sample Rate
-    #[clap(long, default_value_t = 4e6)]
-    zigbee_sample_rate: f64,
-    /// WLAN RX Channel
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_rx_channel: f64,
-    /// WLAN TX Channel
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_tx_channel: f64,
-    /// WLAN Sample Rate
-    #[clap(long, default_value_t = 20e6)]
-    wlan_sample_rate: f64,
+
+
     // Drop policy to apply on the selector.
     #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
@@ -92,47 +63,11 @@ fn main() -> Result<()> {
     let args = Args::parse();
     println!("Configuration: {:?}", args);
 
-    let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_freq];
-    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq]; 
-    let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
-
     let mut fg = Flowgraph::new();
-    
-    let mut sink = SoapySinkBuilder::new()
-        .freq(tx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(args.tx_gain);
 
-    let mut src = SoapySourceBuilder::new()
-        .freq(rx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(args.rx_gain);
-    
-    if let Some(f) = args.filter {
-        let f2 = f.clone();
-        sink = sink.filter(f);
-        src = src.filter(f2);
-    }
-    let sink = sink.build();
-    let src = src.build();
-
-    //message handler to change frequency and sample rate during runtime
-    let sink_freq_input_port_id = sink
-        .message_input_name_to_id("freq") 
-        .expect("No freq port found!");
-    let sink_sample_rate_input_port_id = sink
-        .message_input_name_to_id("sample_rate")
-        .expect("No sample_rate port found!");
-    let sink = fg.add_block(sink);
-
-    let src_freq_input_port_id = src
-        .message_input_name_to_id("freq") 
-        .expect("No freq port found!");
-    let src_sample_rate_input_port_id = src
-        .message_input_name_to_id("sample_rate")
-        .expect("No sample_rate port found!");
-    let src = fg.add_block(src);
-    
+    //FIR
+    let taps = [0.5f32, 0.5f32];
+    let fir = fg.add_block(FirBuilder::new::<Complex32, Complex32, f32, _>(taps));
 
     //Soapy Sink + Selector
     let sink_selector = Selector::<Complex32, 2, 1>::new(args.drop_policy);
@@ -140,7 +75,7 @@ fn main() -> Result<()> {
         .message_input_name_to_id("input_index")
         .expect("No input_index port found!");
     let sink_selector = fg.add_block(sink_selector);
-    fg.connect_stream(sink_selector, "out0", sink, "in")?;
+    fg.connect_stream(sink_selector, "out0", fir, "in")?;
 
     //source selector
     let src_selector = Selector::<Complex32, 1, 2>::new(args.drop_policy);
@@ -148,7 +83,8 @@ fn main() -> Result<()> {
         .message_input_name_to_id("output_index")
         .expect("No output_index port found!");
     let src_selector = fg.add_block(src_selector);
-    fg.connect_stream(src, "out", src_selector, "in0")?;
+    fg.connect_stream(fir, "out", src_selector, "in0")?;
+
 
 
     // ========================================
@@ -379,43 +315,12 @@ fn main() -> Result<()> {
             async_io::block_on(
                 input_handle
                 .call(
-                    src, 
-                    src_freq_input_port_id, 
-                    Pmt::F64(rx_freq[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_sample_rate_input_port_id, 
-                    Pmt::F64(sample_rate[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
                     src_selector, 
                     output_index_port_id, 
                     Pmt::U32(new_index)
                 )
             )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_freq_input_port_id, 
-                        Pmt::F64(tx_freq[new_index as usize])
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_sample_rate_input_port_id, 
-                        Pmt::F64(sample_rate[new_index as usize])
-                    )
-            )?;
+
             async_io::block_on(
                 input_handle
                     .call(
