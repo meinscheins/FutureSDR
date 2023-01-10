@@ -54,12 +54,12 @@ struct Args {
     /// Soapy Filter
     #[clap(short, long)]
     filter: Option<String>,
-    /// RX Gain
+    /// Zigbee RX Gain
     #[clap(long, default_value_t = 50.0)]
-    rx_gain: f64,
-    /// TX Gain
-    #[clap(long, default_value_t = 18.0)]
-    tx_gain: f64,
+    zigbee_rx_gain: f64,
+    /// Zigbee TX Gain
+    #[clap(long, default_value_t = 50.0)]
+    zigbee_tx_gain: f64,
     /// Zigbee RX Channel
     #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
     zigbee_rx_freq: f64,
@@ -69,6 +69,7 @@ struct Args {
     /// Zigbee Sample Rate
     #[clap(long, default_value_t = 4e6)]
     zigbee_sample_rate: f64,
+    
     /// WLAN RX Channel
     #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
     wlan_rx_channel: f64,
@@ -77,7 +78,14 @@ struct Args {
     wlan_tx_channel: f64,
     /// WLAN Sample Rate
     #[clap(long, default_value_t = 20e6)]
-    wlan_sample_rate: f64,
+    wlan_sample_rate: f64,    
+    /// WLAN RX Gain
+    #[clap(long, default_value_t = 50.0)]
+    wlan_rx_gain: f64,
+    /// WLAN TX Gain
+    #[clap(long, default_value_t = 18.0)]
+    wlan_tx_gain: f64,
+
     // Drop policy to apply on the selector.
     #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
@@ -94,19 +102,22 @@ fn main() -> Result<()> {
 
     let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_freq];
     let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq]; 
+    let rx_gain = [args.wlan_rx_gain, args.zigbee_rx_gain];
+    let tx_gain = [args.wlan_tx_gain, args.zigbee_tx_gain]; 
     let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
+
 
     let mut fg = Flowgraph::new();
     
     let mut sink = SoapySinkBuilder::new()
         .freq(tx_freq[0])
         .sample_rate(sample_rate[0])
-        .gain(args.tx_gain);
+        .gain(tx_gain[0]);
 
     let mut src = SoapySourceBuilder::new()
         .freq(rx_freq[0])
         .sample_rate(sample_rate[0])
-        .gain(args.rx_gain);
+        .gain(rx_gain[0]);
     
     if let Some(f) = args.filter {
         let f2 = f.clone();
@@ -123,6 +134,9 @@ fn main() -> Result<()> {
     let sink_sample_rate_input_port_id = sink
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
+    let sink_gain_input_port_id = sink
+        .message_input_name_to_id("gain")
+        .expect("No gain port found!");
     let sink = fg.add_block(sink);
 
     let src_freq_input_port_id = src
@@ -131,6 +145,9 @@ fn main() -> Result<()> {
     let src_sample_rate_input_port_id = src
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
+    let src_gain_input_port_id = src
+        .message_input_name_to_id("gain")
+        .expect("No gain port found!");
     let src = fg.add_block(src);
     
 
@@ -395,6 +412,14 @@ fn main() -> Result<()> {
             async_io::block_on(
                 input_handle
                 .call(
+                    src, 
+                    src_gain_input_port_id, 
+                    Pmt::F64(rx_gain[new_index as usize])
+                )
+            )?;
+            async_io::block_on(
+                input_handle
+                .call(
                     src_selector, 
                     output_index_port_id, 
                     Pmt::U32(new_index)
@@ -414,6 +439,14 @@ fn main() -> Result<()> {
                         sink, 
                         sink_sample_rate_input_port_id, 
                         Pmt::F64(sample_rate[new_index as usize])
+                    )
+            )?;
+            async_io::block_on(
+                input_handle
+                    .call(
+                        sink, 
+                        sink_gain_input_port_id, 
+                        Pmt::F64(tx_gain[new_index as usize])
                     )
             )?;
             async_io::block_on(
