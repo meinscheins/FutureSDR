@@ -54,18 +54,15 @@ struct Args {
     /// RX Antenna
     #[clap(long)]
     rx_antenna: Option<String>,
-    /// RX Soapy Filter
+    /// Soapy device Filter
     #[clap(long)]
-    rx_filter: Option<String>,
+    device_filter: Option<String>,
     /// RX Gain
     #[clap(long, default_value_t = 60.0)]
     rx_gain: f64,
     /// TX Antenna
     #[clap(long)]
     tx_antenna: Option<String>,
-    /// TX Soapy Filter
-    #[clap(long)]
-    tx_filter: Option<String>,
     /// TX Gain
     #[clap(long, default_value_t = 60.0)]
     tx_gain: f64,
@@ -90,6 +87,12 @@ struct Args {
     /// Soapy TX Frequency Offset
     #[clap(long, default_value_t = 0.0)]
     tx_freq_offset: f64,
+    /// Soapy RX Center Frequency
+    #[clap(long, default_value_t = 2.45e9)]
+    rx_center_freq: f64,
+    /// Soapy TX Center Frequency
+    #[clap(long, default_value_t = 2.45e9)]
+    tx_center_freq: f64,
     /// TX MCS
     #[clap(long, value_parser = Mcs::parse, default_value = "qpsk12")]
     mcs: Mcs,
@@ -156,7 +159,8 @@ fn main() -> Result<()> {
         "in",
         Circular::with_size(prefix_in_size),
     )?;
-    let soapy_dev = Device::new("").unwrap();
+    let filter = args.device_filter.unwrap_or_else(|| "".to_string());
+    let soapy_dev = Device::new(&*filter).unwrap();
     soapy_dev
         .set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate)
         .unwrap();
@@ -164,16 +168,16 @@ fn main() -> Result<()> {
         .set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate)
         .unwrap();
     soapy_dev
-        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", 2.46e9, "")
+        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", args.tx_center_freq, "")
         .unwrap();
     soapy_dev
-        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", 4e6, "")
+        .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", args.tx_freq_offset, "")
         .unwrap();
     soapy_dev
-        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", 2.44e9, "")
+        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", args.rx_center_freq, "")
         .unwrap();
     soapy_dev
-        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", 4e6, "")
+        .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", args.rx_freq_offset, "")
         .unwrap();
     //soapy_dev.set_frequency(Direction::Tx, args.soapy_tx_channel, 2.45e9+4e6, "").unwrap();
     //soapy_dev.set_frequency(Direction::Rx, args.soapy_rx_channel, 2.45e9-4e6, "").unwrap();
@@ -199,9 +203,6 @@ fn main() -> Result<()> {
     if let Some(a) = args.tx_antenna {
         soapy = soapy.antenna(a);
     }
-    if let Some(f) = args.tx_filter {
-        soapy = soapy.filter(f);
-    }
     let soapy_snk = fg.add_block(soapy.build());
     fg.connect_stream_with_type(
         prefix,
@@ -220,9 +221,6 @@ fn main() -> Result<()> {
         .cfg_channel(args.soapy_rx_channel);
     if let Some(a) = args.rx_antenna {
         soapy = soapy.antenna(a);
-    }
-    if let Some(f) = args.rx_filter {
-        soapy = soapy.filter(f);
     }
     let src = fg.add_block(soapy.build());
     let delay = fg.add_block(Delay::<Complex32>::new(16));
@@ -312,7 +310,7 @@ fn main() -> Result<()> {
 
     // we are the udp server
     if let Some(port) = args.local_port {
-        info!("Acting as UDP server.");
+        println!("Acting as UDP server.");
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
@@ -321,6 +319,7 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
+            println!("sending frame size {} from {:?}", n, e);  // TODO comment out
             handle
                 .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                 .await
@@ -329,7 +328,8 @@ fn main() -> Result<()> {
             tx_endpoint.send(e).unwrap();
 
             loop {
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                let (n, e) = socket.recv_from(&mut buf).await.unwrap();
+                println!("sending frame size {} from {:?}", n, e);  // TODO comment out
                 handle
                     .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                     .await
@@ -339,7 +339,7 @@ fn main() -> Result<()> {
 
         rt.spawn_background(async move {
             let endpoint = rx_endpoint.await.unwrap();
-            info!("endpoint connected to local udp server {:?}", &endpoint);
+            println!("endpoint connected to local udp server {:?}", &endpoint);
 
             loop {
                 if let Some(p) = rxed_frames.next().await {
@@ -355,7 +355,7 @@ fn main() -> Result<()> {
             }
         });
     } else if let Some(remote) = args.remote_udp {
-        info!("Acting as UDP client.");
+        println!("Acting as UDP client.");
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
@@ -365,7 +365,7 @@ fn main() -> Result<()> {
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((n, _s)) => {
-                        //println!("sending frame size {} from {:?}", n, s);
+                        println!("sending frame size {} from {:?}", n, _s);  // TODO comment out
                         handle
                             .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                             .await
@@ -379,25 +379,28 @@ fn main() -> Result<()> {
         rt.spawn_background(async move {
             loop {
                 if let Some(p) = rxed_frames.next().await {
+                    println!("FLAG0");
                     if let Pmt::Blob(v) = p {
                         println!("received frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
                     } else {
+                        println!("FLAG1");
                         warn!("pmt to tx was not a blob");
                     }
                 } else {
+                    println!("FLAG2");
                     warn!("cannot read from MessagePipe receiver");
                 }
             }
         });
     } else {
-        info!("No UDP forwarding configured");
+        println!("No UDP forwarding configured");
         rt.spawn_background(async move {
             loop {
                 if let Some(_p) = rxed_frames.next().await {
-                    info!("FRAAAAAAAAME");
+                    println!("FRAAAAAAAAME");
                 } else {
-                    warn!("cannot read from MessagePipe receiver");
+                    println!("cannot read from MessagePipe receiver");
                 }
             }
         });
