@@ -68,18 +68,18 @@ struct Args {
     /// RX Soapy Filter
     #[clap(long)]
     rx_filter: Option<String>,
-    /// RX Gain
-    #[clap(long, default_value_t = 60.0)]
-    rx_gain: f64,
     /// TX Antenna
     #[clap(long)]
     tx_antenna: Option<String>,
     /// TX Soapy Filter
     #[clap(long)]
     tx_filter: Option<String>,
-    /// TX Gain
-    #[clap(long, default_value_t = 60.0)]
-    tx_gain: f64,
+    /// Zigbee RX Gain
+    #[clap(long, default_value_t = 50.0)]
+    zigbee_rx_gain: f64,
+    /// Zigbee TX Gain
+    #[clap(long, default_value_t = 50.0)]
+    zigbee_tx_gain: f64,
     /// Zigbee RX Channel
     #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
     zigbee_rx_freq: f64,
@@ -89,6 +89,12 @@ struct Args {
     /// Zigbee Sample Rate
     #[clap(long, default_value_t = 4e6)]
     zigbee_sample_rate: f64,
+    /// WLAN RX Gain
+    #[clap(long, default_value_t = 40.0)]
+    wlan_rx_gain: f64,
+    /// WLAN TX Gain
+    #[clap(long, default_value_t = 40.0)]
+    wlan_tx_gain: f64,
     /// WLAN Sample Rate
     #[clap(long, default_value_t = 20e6)]
     wlan_sample_rate: f64,
@@ -148,7 +154,9 @@ fn main() -> Result<()> {
 
     
     let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_freq];
-    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq]; 
+    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq];
+    let rx_gain = [args.wlan_rx_gain, args.zigbee_rx_gain];
+    let tx_gain = [args.wlan_tx_gain, args.zigbee_tx_gain];  
     let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
 
     let mut fg = Flowgraph::new();
@@ -156,13 +164,13 @@ fn main() -> Result<()> {
     let mut sink = SoapySinkBuilder::new()
         .freq(tx_freq[0])
         .sample_rate(sample_rate[0])
-        .gain(args.tx_gain);
+        .gain(tx_gain[0]);
 
     let mut src = SoapySourceBuilder::new()
         .freq(rx_freq[0])
         .sample_rate(sample_rate[0])
-        .gain(args.rx_gain);
-    
+        .gain(rx_gain[0]);
+        
     if let Some(f) = args.tx_filter {
         sink = sink.filter(f);
     }
@@ -180,6 +188,9 @@ fn main() -> Result<()> {
     let sink_sample_rate_input_port_id = sink
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
+    let sink_gain_input_port_id = sink
+        .message_input_name_to_id("gain")
+        .expect("No gain port found!");
     let sink = fg.add_block(sink);
 
     let src_freq_input_port_id = src
@@ -188,6 +199,9 @@ fn main() -> Result<()> {
     let src_sample_rate_input_port_id = src
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
+    let src_gain_input_port_id = src
+        .message_input_name_to_id("gain")
+        .expect("No gain port found!");
     let src = fg.add_block(src);
     
 
@@ -282,10 +296,13 @@ fn main() -> Result<()> {
     let wlan_decoder = fg.add_block(WlanDecoder::new());
     fg.connect_stream(wlan_frame_equalizer, "out", wlan_decoder, "in")?;
 
-    let (rxed_sender, mut rxed_frames) = mpsc::channel::<Pmt>(100);
-    let wlan_message_pipe = fg.add_block(MessagePipe::new(rxed_sender));
+    let (wlan_rxed_sender, mut wlan_rxed_frames) = mpsc::channel::<Pmt>(100);
+    let wlan_message_pipe = fg.add_block(MessagePipe::new(wlan_rxed_sender));
     fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
-
+    let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55555"));
+    fg.connect_message(wlan_decoder, "rx_frames", wlan_blob_to_udp, "in")?;
+    let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
+    fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
 
 
     // ========================================
@@ -316,13 +333,16 @@ fn main() -> Result<()> {
 
     let zigbee_decoder = fg.add_block(ZigbeeDecoder::new(6));
     let zigbee_mac = fg.add_block(ZigbeeMac::new());
-    let zigbee_snk = fg.add_block(NullSink::<u8>::new());
+    let null_sink = fg.add_block(NullSink::<u8>::new());
     let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
+    //let (zigbee_rxed_sender, mut zigbee_rxed_frames) = mpsc::channel::<Pmt>(100);
+    //let zigbee_message_pipe = fg.add_block(MessagePipe::new(zigbee_rxed_sender));
 
     fg.connect_stream(src_selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
+    //fg.connect_stream(zigbee_mac, "out", zigbee_message_pipe, "in")?;
+    fg.connect_stream(zigbee_mac, "out", null_sink, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
 
@@ -360,8 +380,10 @@ fn main() -> Result<()> {
     // }
 
     let rt = Runtime::new();
-    let (fg, mut handle) = block_on(rt.start(fg));
-    let (sender, receiver) = channel();
+    let (_fg, mut handle) = block_on(rt.start(fg));
+    let (mode_sender, mode_receiver) = channel();
+    let (udp_client_mode_sender, udp_client_mode_receiver) = channel();
+    let (udp_server_mode_sender, udp_server_mode_receiver) = channel();
     let mut input_handle = handle.clone();
     let mut mode = 0;  
 
@@ -372,7 +394,7 @@ fn main() -> Result<()> {
         rt.spawn_background(async move {
             loop {
                 Timer::after(Duration::from_secs_f32(tx_interval)).await;
-                if let Some(new_mode) = receiver.try_recv().ok(){
+                if let Some(new_mode) = mode_receiver.try_recv().ok(){
                     mode = new_mode;
                 }
                 if mode == 0 {
@@ -386,7 +408,7 @@ fn main() -> Result<()> {
                     .unwrap();
                 seq += 1;
                 }
-                if mode == 0 {
+                if mode == 1 {
                     myhandle
                     .call(
                         zigbee_mac,
@@ -413,19 +435,40 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            handle
-                .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                .await
-                .unwrap();
-
-            tx_endpoint.send(e).unwrap();
-
-            loop {
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+            if let Some(new_mode) = udp_server_mode_receiver.try_recv().ok(){
+                mode = new_mode;
+            }
+            if mode == 0 {
                 handle
                     .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                     .await
                     .unwrap();
+            }
+            if mode == 1 {
+                handle
+                    .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
+                    .await
+                    .unwrap();
+            }
+            tx_endpoint.send(e).unwrap();
+
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                if let Some(new_mode) = udp_server_mode_receiver.try_recv().ok(){
+                    mode = new_mode;
+                }
+                if mode == 0 {
+                    handle
+                        .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                        .await
+                        .unwrap();
+                }
+                if mode == 1 {
+                    handle
+                        .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
+                        .await
+                        .unwrap();
+                }
             }
         });
 
@@ -434,10 +477,10 @@ fn main() -> Result<()> {
             info!("endpoint connected to local udp server {:?}", &endpoint);
 
             loop {
-                if let Some(p) = rxed_frames.next().await {
+                if let Some(p) = wlan_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
                         println!("received frame, size {}", v.len() - 24);
-                        socket2.send_to(&v[24..], endpoint).await.unwrap();
+                        //socket2.send_to(&v[24..], endpoint).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -457,11 +500,23 @@ fn main() -> Result<()> {
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((n, s)) => {
-                        println!("sending frame size {} from {:?}", n, s);
-                        handle
-                            .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                            .await
-                            .unwrap()
+                        if let Some(new_mode) = udp_client_mode_receiver.try_recv().ok(){
+                            mode = new_mode;
+                        }
+                        if mode == 0 {
+                            println!("sending frame size {} from {:?} in WLAN mode", n, s);
+                            handle
+                                .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+                                .await
+                                .unwrap()
+                        }
+                        if mode == 1 {
+                            println!("sending frame size {} from {:?} in Zigbee mode", n, s);
+                            handle
+                                .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
+                                .await
+                                .unwrap()
+                        }
                     }
                     Err(e) => println!("ERROR: {:?}", e),
                 }
@@ -470,7 +525,7 @@ fn main() -> Result<()> {
 
         rt.spawn_background(async move {
             loop {
-                if let Some(p) = rxed_frames.next().await {
+                if let Some(p) = wlan_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
                         println!("received frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
@@ -486,8 +541,12 @@ fn main() -> Result<()> {
         info!("No UDP forwarding configured");
         rt.spawn_background(async move {
             loop {
-                if let Some(_p) = rxed_frames.next().await {
-                    info!("FRAAAAAAAAME");
+                if let Some(p) = wlan_rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        println!("received frame size {}", v.len() - 24);
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
                 }
@@ -505,10 +564,12 @@ fn main() -> Result<()> {
             .expect("error: unable to read user input");
         input.retain(|c| !c.is_whitespace());
 
-        // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
+        // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
-            sender.send(new_index)?;
+            mode_sender.send(new_index)?;
+            udp_client_mode_sender.send(new_index)?;
+            udp_server_mode_sender.send(new_index)?;
 
             async_io::block_on(
                 input_handle
@@ -524,6 +585,14 @@ fn main() -> Result<()> {
                     src, 
                     src_sample_rate_input_port_id, 
                     Pmt::F64(sample_rate[new_index as usize])
+                )
+            )?;
+            async_io::block_on(
+                input_handle
+                .call(
+                    src, 
+                    src_gain_input_port_id, 
+                    Pmt::F64(rx_gain[new_index as usize])
                 )
             )?;
             async_io::block_on(
@@ -553,6 +622,14 @@ fn main() -> Result<()> {
             async_io::block_on(
                 input_handle
                     .call(
+                        sink, 
+                        sink_gain_input_port_id, 
+                        Pmt::F64(tx_gain[new_index as usize])
+                    )
+            )?;
+            async_io::block_on(
+                input_handle
+                    .call(
                         sink_selector, 
                         input_index_port_id, 
                         Pmt::U32(new_index)
@@ -562,6 +639,5 @@ fn main() -> Result<()> {
             println!("Input not parsable: {}", input);
         }
     }
-    block_on(fg)?;
 
 }

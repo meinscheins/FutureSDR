@@ -80,10 +80,10 @@ struct Args {
     #[clap(long, default_value_t = 20e6)]
     wlan_sample_rate: f64,    
     /// WLAN RX Gain
-    #[clap(long, default_value_t = 50.0)]
+    #[clap(long, default_value_t = 60.0)]
     wlan_rx_gain: f64,
     /// WLAN TX Gain
-    #[clap(long, default_value_t = 18.0)]
+    #[clap(long, default_value_t = 60.0)]
     wlan_tx_gain: f64,
 
     // Drop policy to apply on the selector.
@@ -213,8 +213,8 @@ fn main() -> Result<()> {
     fg.connect_message(wlan_decoder, "rx_frames", wlan_message_pipe, "in")?;
     let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55555"));
     fg.connect_message(wlan_decoder, "rx_frames", wlan_blob_to_udp, "in")?;
-    //let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
-    //fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
+    let wlan_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55556"));
+    fg.connect_message(wlan_decoder, "rftap", wlan_blob_to_udp, "in")?;
     
     
     
@@ -252,8 +252,8 @@ fn main() -> Result<()> {
     fg.connect_stream(src_selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
+    fg.connect_stream(zigbee_mac, "out", zigbee_snk, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
 
 
@@ -325,7 +325,6 @@ fn main() -> Result<()> {
     let (_fg, mut handle) = block_on(rt.start(fg));
 
 
-     //WLAN frame received message currently intterupts user input to select source
     rt.spawn_background(async move {
         while let Some(x) = wlan_rx_frame.next().await {
             match x {
@@ -338,14 +337,14 @@ fn main() -> Result<()> {
     });
 
     let mut seq = 0u64;
-    let (sender, receiver) = channel();
+    let (mode_sender, mode_receiver) = channel();
     let mut input_handle = handle.clone();
     let mut mode = 0;  
 
     rt.spawn_background(async move {
         loop {
             Timer::after(Duration::from_secs_f32(0.8)).await;
-            if let Some(new_mode) = receiver.try_recv().ok(){
+            if let Some(new_mode) = mode_receiver.try_recv().ok(){
                 mode = new_mode;
             }
             println!("Mode {:?}", mode);
@@ -391,7 +390,7 @@ fn main() -> Result<()> {
         // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
-            sender.send(new_index)?;
+            mode_sender.send(new_index)?;
 
             async_io::block_on(
                 input_handle
