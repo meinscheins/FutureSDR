@@ -13,7 +13,6 @@ use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
 use futuresdr::blocks::FftDirection;
 use futuresdr::blocks::MessagePipe;
-use futuresdr::blocks::NullSink;
 use futuresdr::blocks::Selector;
 use futuresdr::blocks::SelectorDropPolicy as DropPolicy;
 use futuresdr::blocks::SoapySinkBuilder;
@@ -333,25 +332,21 @@ fn main() -> Result<()> {
 
     let zigbee_decoder = fg.add_block(ZigbeeDecoder::new(6));
     let zigbee_mac = fg.add_block(ZigbeeMac::new());
-    let null_sink = fg.add_block(NullSink::<u8>::new());
-    //let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
     let (zigbee_rxed_sender, mut zigbee_rxed_frames) = mpsc::channel::<Pmt>(100);
     let zigbee_message_pipe = fg.add_block(MessagePipe::new(zigbee_rxed_sender));
 
     fg.connect_stream(src_selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    fg.connect_message(zigbee_mac, "rxed", zigbee_message_pipe, "in")?;
-    fg.connect_stream(zigbee_mac, "out", null_sink, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
-    //fg.connect_message(zigbee_mac, "out", zigbee_blob_to_udp, "in")?;
+    fg.connect_message(zigbee_mac, "rxed", zigbee_message_pipe, "in")?;
 
 
     // ========================================
     // ZIGBEE TRANSMITTER
     // ========================================
 
-    let zigbee_mac = fg.add_block(ZigbeeMac::new());
+    //let zigbee_mac = fg.add_block(ZigbeeMac::new());
     let zigbee_modulator = fg.add_block(zigbee_modulator());
     let zigbee_iq_delay = fg.add_block(ZigbeeIqDelay::new());
 
@@ -429,8 +424,10 @@ fn main() -> Result<()> {
     if let Some(port) = args.local_port {
         info!("Acting as UDP server.");
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
+        let (tx_endpoint2, rx_endpoint2) = oneshot::channel::<SocketAddr>();
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
+        let socket3 = socket.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -452,6 +449,7 @@ fn main() -> Result<()> {
                     .unwrap();
             }
             tx_endpoint.send(e).unwrap();
+            tx_endpoint2.send(e).unwrap();
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
@@ -487,7 +485,24 @@ fn main() -> Result<()> {
                     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
-                }
+                }    
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint2.await.unwrap();
+            loop {
+                if let Some(p) = zigbee_rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        println!("received Zigbee frame size {}", v.len());
+                        socket3.send_to(&v, endpoint).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+               }   
+                
             }
         });
     } else if let Some(remote) = args.remote_udp {
@@ -495,6 +510,7 @@ fn main() -> Result<()> {
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
+        let socket3 = socket.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -533,18 +549,29 @@ fn main() -> Result<()> {
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
-                } else if let Some(p) = zigbee_rxed_frames.next().await {
+                } else {
+                     warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+
+        rt.spawn_background(async move {
+            loop {
+                if let Some(p) = zigbee_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received Zigbee frame size {}", v.len() - 24);
-                        socket2.send(&v[0..]).await.unwrap();
+                        println!("received Zigbee frame size {}", v.len());
+                        socket3.send(&v).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
-                }
+               }   
+                
             }
         });
+
+        
     } else {
         info!("No UDP forwarding configured");
         rt.spawn_background(async move {

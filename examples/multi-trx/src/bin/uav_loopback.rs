@@ -280,7 +280,6 @@ fn main() -> Result<()> {
     let (mode_sender, mode_receiver) = channel();
     let (udp_client_mode_sender, udp_client_mode_receiver) = channel();
     let (udp_server_mode_sender, udp_server_mode_receiver) = channel();
-    let (udp_server_mode_sender2, udp_server_mode_receiver2) = channel();
     let mut input_handle = handle.clone();
     let mut mode = 0;  
 
@@ -506,7 +505,6 @@ fn main() -> Result<()> {
             mode_sender.send(new_index)?;
             udp_client_mode_sender.send(new_index)?;
             udp_server_mode_sender.send(new_index)?;
-            udp_server_mode_sender2.send(new_index)?;
             async_io::block_on(
                 input_handle
                     .call(
