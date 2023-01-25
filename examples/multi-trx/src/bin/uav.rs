@@ -344,7 +344,8 @@ fn main() -> Result<()> {
     //fg.connect_stream(zigbee_mac, "out", zigbee_message_pipe, "in")?;
     fg.connect_stream(zigbee_mac, "out", null_sink, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
-    fg.connect_message(zigbee_decoder, "out", zigbee_blob_to_udp, "in")?;
+    fg.connect_message(zigbee_mac, "out", zigbee_blob_to_udp, "in")?;
+
 
     // ========================================
     // ZIGBEE TRANSMITTER
@@ -480,7 +481,7 @@ fn main() -> Result<()> {
                 if let Some(p) = wlan_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
                         println!("received frame, size {}", v.len() - 24);
-                        //socket2.send_to(&v[24..], endpoint).await.unwrap();
+                        socket2.send_to(&v[24..], endpoint).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -495,33 +496,33 @@ fn main() -> Result<()> {
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
 
-        rt.spawn_background(async move {
-            let mut buf = vec![0u8; 1024];
-            loop {
-                match socket.recv_from(&mut buf).await {
-                    Ok((n, s)) => {
-                        if let Some(new_mode) = udp_client_mode_receiver.try_recv().ok(){
-                            mode = new_mode;
-                        }
-                        if mode == 0 {
-                            println!("sending frame size {} from {:?} in WLAN mode", n, s);
-                            handle
-                                .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                                .await
-                                .unwrap()
-                        }
-                        if mode == 1 {
-                            println!("sending frame size {} from {:?} in Zigbee mode", n, s);
-                            handle
-                                .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
-                                .await
-                                .unwrap()
-                        }
-                    }
-                    Err(e) => println!("ERROR: {:?}", e),
-                }
-            }
-        });
+        // rt.spawn_background(async move {
+        //     let mut buf = vec![0u8; 1024];
+        //     loop {
+        //         match socket.recv_from(&mut buf).await {
+        //             Ok((n, s)) => {
+        //                 if let Some(new_mode) = udp_client_mode_receiver.try_recv().ok(){
+        //                     mode = new_mode;
+        //                 }
+        //                 if mode == 0 {
+        //                     println!("sending frame size {} from {:?} in WLAN mode", n, s);
+        //                     handle
+        //                         .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
+        //                         .await
+        //                         .unwrap()
+        //                 }
+        //                 if mode == 1 {
+        //                     println!("sending frame size {} from {:?} in Zigbee mode", n, s);
+        //                     handle
+        //                         .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
+        //                         .await
+        //                         .unwrap()
+        //                 }
+        //             }
+        //             Err(e) => println!("ERROR: {:?}", e),
+        //         }
+        //     }
+        // });
 
         rt.spawn_background(async move {
             loop {
@@ -532,6 +533,13 @@ fn main() -> Result<()> {
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
+                // } else if let Some(p) = zigbee_rxed_frames.next().await {
+                //     if let Pmt::Blob(v) = p {
+                //         println!("received frame size {}", v.len() - 24);
+                //         socket2.send(&v[0..]).await.unwrap();
+                //     } else {
+                //         warn!("pmt to tx was not a blob");
+                //     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
                 }
