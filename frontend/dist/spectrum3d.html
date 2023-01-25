@@ -136,7 +136,7 @@ Number.prototype.clamp = function(min, max) {
  function init() {
      analyserView1 = new AnalyserView("view1");
 
-     var ws = new WebSocket("ws://10.193.0.66:9001");
+     var ws = new WebSocket("ws://10.193.0.75:9001");
      ws.onmessage = function (event) {
          new Response(event.data).arrayBuffer()
                                  .then(function (buff) {
