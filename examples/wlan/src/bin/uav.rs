@@ -199,7 +199,9 @@ fn main() -> Result<()> {
     let mut soapy = SoapySinkBuilder::new()
         .device(Dev(soapy_dev.clone()))
         .gain(args.tx_gain)
-        .cfg_channel(args.soapy_tx_channel);
+        .dev_channels(vec![args.soapy_tx_channel]);
+    // TODO using dev_channels instead of cfg_channels because otherwise the setting gets lost
+    //  somewhere in the config and is never used.
     if let Some(a) = args.tx_antenna {
         soapy = soapy.antenna(a);
     }
@@ -216,9 +218,9 @@ fn main() -> Result<()> {
     // RECEIVER
     // ============================================
     let mut soapy = SoapySourceBuilder::new()
-        .device(Dev(soapy_dev))
+        .device(Dev(soapy_dev.clone()))
         .gain(args.rx_gain)
-        .cfg_channel(args.soapy_rx_channel);
+        .dev_channels(vec![args.soapy_rx_channel]);
     if let Some(a) = args.rx_antenna {
         soapy = soapy.antenna(a);
     }
@@ -307,6 +309,12 @@ fn main() -> Result<()> {
             }
         });
     }
+
+    println!("actual frequencies: (Tx center, Tx BB, Rx center, Rx BB");
+    println!("{}", soapy_dev.component_frequency(Direction::Tx, args.soapy_tx_channel, "RF").unwrap().to_string());
+    println!("{}", soapy_dev.component_frequency(Direction::Tx, args.soapy_tx_channel, "BB").unwrap().to_string());
+    println!("{}", soapy_dev.component_frequency(Direction::Rx, args.soapy_tx_channel, "RF").unwrap().to_string());
+    println!("{}", soapy_dev.component_frequency(Direction::Rx, args.soapy_tx_channel, "BB").unwrap().to_string());
 
     // we are the udp server
     if let Some(port) = args.local_port {
