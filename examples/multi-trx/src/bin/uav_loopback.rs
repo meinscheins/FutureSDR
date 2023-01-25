@@ -12,14 +12,11 @@ use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
 use futuresdr::blocks::Fft;
 use futuresdr::blocks::FftDirection;
+use futuresdr::blocks::FirBuilder;
 use futuresdr::blocks::MessagePipe;
-use futuresdr::blocks::NullSink;
+//use futuresdr::blocks::NullSink;
 use futuresdr::blocks::Selector;
 use futuresdr::blocks::SelectorDropPolicy as DropPolicy;
-use futuresdr::blocks::SoapySinkBuilder;
-use futuresdr::blocks::SoapySourceBuilder;
-//use futuresdr::blocks::WebsocketSinkBuilder;
-//use futuresdr::blocks::WebsocketSinkMode;
 use futuresdr::futures::channel::mpsc;
 use futuresdr::futures::channel::oneshot;
 use futuresdr::futures::StreamExt;
@@ -32,13 +29,10 @@ use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
 
 use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
-use wlan::parse_channel as wlan_parse_channel;
 use wlan::Decoder as WlanDecoder;
 use wlan::Delay as WlanDelay;
 use wlan::Encoder as WlanEncoder;
-//use wlan::FftShift;
 use wlan::FrameEqualizer as WlanFrameEqualizer;
-//use wlan::Keep1InN;
 use wlan::Mac as WlanMac;
 use wlan::Mapper as WlanMapper;
 use wlan::Mcs as WlanMcs;
@@ -48,7 +42,6 @@ use wlan::SyncLong as WlanSyncLong;
 use wlan::SyncShort as WlanSyncShort;
 use wlan::MAX_SYM;
 
-use zigbee::parse_channel as zigbee_parse_channel;
 use zigbee::modulator as zigbee_modulator;
 use zigbee::IqDelay as ZigbeeIqDelay;
 use zigbee::Mac as ZigbeeMac;
@@ -62,54 +55,6 @@ const PAD_TAIL: usize = 10000;
 #[derive(Parser, Debug)]
 #[clap(version)]
 struct Args {
-    /// RX Antenna
-    #[clap(long)]
-    rx_antenna: Option<String>,
-    /// RX Soapy Filter
-    #[clap(long)]
-    rx_filter: Option<String>,
-    /// TX Antenna
-    #[clap(long)]
-    tx_antenna: Option<String>,
-    /// TX Soapy Filter
-    #[clap(long)]
-    tx_filter: Option<String>,
-    /// Zigbee RX Gain
-    #[clap(long, default_value_t = 50.0)]
-    zigbee_rx_gain: f64,
-    /// Zigbee TX Gain
-    #[clap(long, default_value_t = 50.0)]
-    zigbee_tx_gain: f64,
-    /// Zigbee RX Channel
-    #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_rx_freq: f64,
-    /// Zigbee TX Channel
-    #[clap(id = "zigbee-tx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_tx_freq: f64,
-    /// Zigbee Sample Rate
-    #[clap(long, default_value_t = 4e6)]
-    zigbee_sample_rate: f64,
-    /// WLAN RX Gain
-    #[clap(long, default_value_t = 40.0)]
-    wlan_rx_gain: f64,
-    /// WLAN TX Gain
-    #[clap(long, default_value_t = 40.0)]
-    wlan_tx_gain: f64,
-    /// WLAN Sample Rate
-    #[clap(long, default_value_t = 20e6)]
-    wlan_sample_rate: f64,
-    /// WLAN RX Channel Number
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_rx_channel: f64,
-    /// WLAN TX Channel Number
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_tx_channel: f64,
-    /// Soapy RX Channel
-    #[clap(long, default_value_t = 0)]
-    soapy_rx_channel: usize,
-    /// Soapy TX Channel
-    #[clap(long, default_value_t = 0)]
-    soapy_tx_channel: usize,
     /// TX MCS
     #[clap(long, value_parser = WlanMcs::parse, default_value = "qpsk12")]
     wlan_mcs: WlanMcs,
@@ -125,9 +70,6 @@ struct Args {
     /// send periodic messages for testing
     #[clap(long, value_parser)]
     tx_interval: Option<f32>,
-    /// Stream Spectrum data at ws://0.0.0.0:9001
-    #[clap(long, value_parser)]
-    spectrum: bool,
     // Drop policy to apply on the selector.
     #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
@@ -152,66 +94,19 @@ fn main() -> Result<()> {
         size += 4096
     };
 
-    
-    let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_freq];
-    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq];
-    let rx_gain = [args.wlan_rx_gain, args.zigbee_rx_gain];
-    let tx_gain = [args.wlan_tx_gain, args.zigbee_tx_gain];  
-    let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
-
     let mut fg = Flowgraph::new();
-    
-    let mut sink = SoapySinkBuilder::new()
-        .freq(tx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(tx_gain[0]);
 
-    let mut src = SoapySourceBuilder::new()
-        .freq(rx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(rx_gain[0]);
-        
-    if let Some(f) = args.tx_filter {
-        sink = sink.filter(f);
-    }
-    if let Some(f) = args.rx_filter {
-        src = src.filter(f);
-    }
+    //FIR
+    let taps = [0.5f32, 0.5f32];
+    let fir = fg.add_block(FirBuilder::new::<Complex32, Complex32, f32, _>(taps));
 
-    let sink = sink.build();
-    let src = src.build();
-
-    //message handler to change frequency and sample rate during runtime
-    let sink_freq_input_port_id = sink
-        .message_input_name_to_id("freq") 
-        .expect("No freq port found!");
-    let sink_sample_rate_input_port_id = sink
-        .message_input_name_to_id("sample_rate")
-        .expect("No sample_rate port found!");
-    let sink_gain_input_port_id = sink
-        .message_input_name_to_id("gain")
-        .expect("No gain port found!");
-    let sink = fg.add_block(sink);
-
-    let src_freq_input_port_id = src
-        .message_input_name_to_id("freq") 
-        .expect("No freq port found!");
-    let src_sample_rate_input_port_id = src
-        .message_input_name_to_id("sample_rate")
-        .expect("No sample_rate port found!");
-    let src_gain_input_port_id = src
-        .message_input_name_to_id("gain")
-        .expect("No gain port found!");
-    let src = fg.add_block(src);
-    
-
-    //Soapy Sink + Selector
+    //Sink Selector
     let sink_selector = Selector::<Complex32, 2, 1>::new(args.drop_policy);
     let input_index_port_id = sink_selector
         .message_input_name_to_id("input_index")
         .expect("No input_index port found!");
     let sink_selector = fg.add_block(sink_selector);
-    fg.connect_stream(sink_selector, "out0", sink, "in")?;
+    fg.connect_stream(sink_selector, "out0", fir, "in")?;
 
     //source selector
     let src_selector = Selector::<Complex32, 1, 2>::new(args.drop_policy);
@@ -219,7 +114,7 @@ fn main() -> Result<()> {
         .message_input_name_to_id("output_index")
         .expect("No output_index port found!");
     let src_selector = fg.add_block(src_selector);
-    fg.connect_stream(src, "out", src_selector, "in0")?;
+    fg.connect_stream(fir, "out", src_selector, "in0")?;
 
     // ============================================
     // WLAN TRANSMITTER
@@ -333,7 +228,7 @@ fn main() -> Result<()> {
 
     let zigbee_decoder = fg.add_block(ZigbeeDecoder::new(6));
     let zigbee_mac = fg.add_block(ZigbeeMac::new());
-    let null_sink = fg.add_block(NullSink::<u8>::new());
+    //let null_sink = fg.add_block(NullSink::<u8>::new());
     //let zigbee_blob_to_udp = fg.add_block(futuresdr::blocks::BlobToUdp::new("127.0.0.1:55557"));
     let (zigbee_rxed_sender, mut zigbee_rxed_frames) = mpsc::channel::<Pmt>(100);
     let zigbee_message_pipe = fg.add_block(MessagePipe::new(zigbee_rxed_sender));
@@ -341,9 +236,9 @@ fn main() -> Result<()> {
     fg.connect_stream(src_selector, "out1", avg, "in")?;
     fg.connect_stream(avg, "out", mm, "in")?;
     fg.connect_stream(mm, "out", zigbee_decoder, "in")?;
-    fg.connect_message(zigbee_mac, "rxed", zigbee_message_pipe, "in")?;
-    fg.connect_stream(zigbee_mac, "out", null_sink, "in")?;
     fg.connect_message(zigbee_decoder, "out", zigbee_mac, "rx")?;
+    fg.connect_message(zigbee_mac, "rxed", zigbee_message_pipe, "in")?;
+    //fg.connect_stream(zigbee_mac, "out", null_sink, "in")?;
     //fg.connect_message(zigbee_mac, "out", zigbee_blob_to_udp, "in")?;
 
 
@@ -351,7 +246,7 @@ fn main() -> Result<()> {
     // ZIGBEE TRANSMITTER
     // ========================================
 
-    let zigbee_mac = fg.add_block(ZigbeeMac::new());
+    //let zigbee_mac = fg.add_block(ZigbeeMac::new());
     let zigbee_modulator = fg.add_block(zigbee_modulator());
     let zigbee_iq_delay = fg.add_block(ZigbeeIqDelay::new());
 
@@ -385,6 +280,7 @@ fn main() -> Result<()> {
     let (mode_sender, mode_receiver) = channel();
     let (udp_client_mode_sender, udp_client_mode_receiver) = channel();
     let (udp_server_mode_sender, udp_server_mode_receiver) = channel();
+    let (udp_server_mode_sender2, udp_server_mode_receiver2) = channel();
     let mut input_handle = handle.clone();
     let mut mode = 0;  
 
@@ -429,8 +325,10 @@ fn main() -> Result<()> {
     if let Some(port) = args.local_port {
         info!("Acting as UDP server.");
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
+        let (tx_endpoint2, rx_endpoint2) = oneshot::channel::<SocketAddr>();
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
+        let socket3 = socket.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -452,6 +350,7 @@ fn main() -> Result<()> {
                     .unwrap();
             }
             tx_endpoint.send(e).unwrap();
+            tx_endpoint2.send(e).unwrap();
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
@@ -487,7 +386,24 @@ fn main() -> Result<()> {
                     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
-                }
+                }    
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint2.await.unwrap();
+            loop {
+                if let Some(p) = zigbee_rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        println!("received Zigbee frame size {}", v.len());
+                        socket3.send_to(&v, endpoint).await.unwrap();
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+               }   
+                
             }
         });
     } else if let Some(remote) = args.remote_udp {
@@ -495,6 +411,7 @@ fn main() -> Result<()> {
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
+        let socket3 = socket.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -533,18 +450,29 @@ fn main() -> Result<()> {
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
-                } else if let Some(p) = zigbee_rxed_frames.next().await {
+                } else {
+                     warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+
+        rt.spawn_background(async move {
+            loop {
+                if let Some(p) = zigbee_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received Zigbee frame size {}", v.len() - 24);
-                        socket2.send(&v[0..]).await.unwrap();
+                        println!("received Zigbee frame size {}", v.len());
+                        socket3.send(&v).await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
-                }
+               }   
+                
             }
         });
+
+        
     } else {
         info!("No UDP forwarding configured");
         rt.spawn_background(async move {
@@ -578,62 +506,14 @@ fn main() -> Result<()> {
             mode_sender.send(new_index)?;
             udp_client_mode_sender.send(new_index)?;
             udp_server_mode_sender.send(new_index)?;
-
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_freq_input_port_id, 
-                    Pmt::F64(rx_freq[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_sample_rate_input_port_id, 
-                    Pmt::F64(sample_rate[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_gain_input_port_id, 
-                    Pmt::F64(rx_gain[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src_selector, 
-                    output_index_port_id, 
-                    Pmt::U32(new_index)
-                )
-            )?;
+            udp_server_mode_sender2.send(new_index)?;
             async_io::block_on(
                 input_handle
                     .call(
-                        sink, 
-                        sink_freq_input_port_id, 
-                        Pmt::F64(tx_freq[new_index as usize])
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_sample_rate_input_port_id, 
-                        Pmt::F64(sample_rate[new_index as usize])
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_gain_input_port_id, 
-                        Pmt::F64(tx_gain[new_index as usize])
-                    )
+                        src_selector, 
+                        output_index_port_id, 
+                        Pmt::U32(new_index)
+                )
             )?;
             async_io::block_on(
                 input_handle

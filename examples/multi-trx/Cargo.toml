@@ -26,6 +26,10 @@ path = "src/bin/loopback.rs"
 name = "uav"
 path = "src/bin/uav.rs"
 
+[[bin]]
+name = "uav-loopback"
+path = "src/bin/uav_loopback.rs"
+
 [dependencies]
 clap = { version = "3.1.18", features = ["derive"] }
 futuresdr = { path = "../..", features = ["soapy"] }
