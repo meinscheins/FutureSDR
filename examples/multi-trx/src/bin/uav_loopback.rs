@@ -308,8 +308,6 @@ fn main() -> Result<()> {
                     .await
                     .unwrap();
                 seq += 1;
-                
-                
             }
         });
     }
