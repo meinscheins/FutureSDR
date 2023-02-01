@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use futuresdr::futures::channel::mpsc;
@@ -243,7 +242,7 @@ fn main() -> Result<()> {
 
     // message input selector
     let message_selector = MessageSelector::new();
-    let meassage_in_port_id = message_selector
+    let message_in_port_id = message_selector
         .message_input_name_to_id("message_in")
         .expect("No message_in port found!");
     let output_selector_port_id = message_selector
@@ -273,46 +272,15 @@ fn main() -> Result<()> {
 
 
     let mut seq = 0u64;
-    let (sender, receiver) = channel();
     let mut input_handle = handle.clone();
-    let mut mode = 0;  
 
     rt.spawn_background(async move {
         loop {
             Timer::after(Duration::from_secs_f32(0.8)).await;
-            if let Some(new_mode) = receiver.try_recv().ok(){
-                mode = new_mode;
-            }
-            println!("Mode {:?}", mode);
-            //WLAN message
-            // if mode == 0 {
-            //     handle
-            //         .call(
-            //             wlan_mac,
-            //             0,
-            //             Pmt::Any(Box::new((
-            //                 format!("FutureSDR {}", seq).as_bytes().to_vec(),
-            //                 WlanMcs::Qpsk_1_2,
-            //             ))),
-            //         )
-            //         .await
-            //         .unwrap();   
-            // //}
-            // //Zigbee message
-            // if mode == 1 {
-            //     handle
-            //         .call(
-            //             zigbee_mac,
-            //             1,
-            //             Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
-            //         )
-            //         .await
-            //         .unwrap();
-            // }
             handle
                 .call(
                     message_selector,
-                    meassage_in_port_id,
+                    message_in_port_id,
                     Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
                 )
                 .await
@@ -334,7 +302,6 @@ fn main() -> Result<()> {
         // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
-            sender.send(new_index)?;
 
             async_io::block_on(
                 input_handle

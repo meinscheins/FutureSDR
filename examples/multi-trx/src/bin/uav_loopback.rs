@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use futuresdr::anyhow::Result;
@@ -14,7 +13,6 @@ use futuresdr::blocks::Fft;
 use futuresdr::blocks::FftDirection;
 use futuresdr::blocks::FirBuilder;
 use futuresdr::blocks::MessagePipe;
-//use futuresdr::blocks::NullSink;
 use futuresdr::blocks::Selector;
 use futuresdr::blocks::SelectorDropPolicy as DropPolicy;
 use futuresdr::futures::channel::mpsc;
@@ -27,6 +25,8 @@ use futuresdr::runtime::buffer::circular::Circular;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
+
+use multitrx::MessageSelector;
 
 use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
 use wlan::Decoder as WlanDecoder;
@@ -254,6 +254,19 @@ fn main() -> Result<()> {
     fg.connect_stream(zigbee_modulator, "out", zigbee_iq_delay, "in")?;
     fg.connect_stream(zigbee_iq_delay, "out", sink_selector, "in1")?;
 
+    // message input selector
+    let message_selector = MessageSelector::new();
+    let message_in_port_id = message_selector
+        .message_input_name_to_id("message_in")
+        .expect("No message_in port found!");
+    let output_selector_port_id = message_selector
+        .message_input_name_to_id("output_selector")
+        .expect("No output_selector port found!");
+    let message_selector = fg.add_block(message_selector);
+    fg.connect_message(message_selector, "out0", wlan_mac, "tx")?;
+    fg.connect_message(message_selector, "out1", zigbee_mac, "tx")?;
+
+
     // ========================================
     // Spectrum
     // ========================================
@@ -277,11 +290,7 @@ fn main() -> Result<()> {
 
     let rt = Runtime::new();
     let (_fg, mut handle) = block_on(rt.start(fg));
-    let (mode_sender, mode_receiver) = channel();
-    let (udp_client_mode_sender, udp_client_mode_receiver) = channel();
-    let (udp_server_mode_sender, udp_server_mode_receiver) = channel();
     let mut input_handle = handle.clone();
-    let mut mode = 0;  
 
     // if tx_interval is set, send messages periodically
     if let Some(tx_interval) = args.tx_interval {
@@ -290,31 +299,16 @@ fn main() -> Result<()> {
         rt.spawn_background(async move {
             loop {
                 Timer::after(Duration::from_secs_f32(tx_interval)).await;
-                if let Some(new_mode) = mode_receiver.try_recv().ok(){
-                    mode = new_mode;
-                }
-                if mode == 0 {
-                    myhandle
+                myhandle
                     .call(
-                        wlan_mac,
-                        0,
+                        message_selector,
+                        message_in_port_id,
                         Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
                     )
                     .await
                     .unwrap();
                 seq += 1;
-                }
-                if mode == 1 {
-                    myhandle
-                    .call(
-                        zigbee_mac,
-                        1,
-                        Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
-                    )
-                    .await
-                    .unwrap();
-                seq += 1;
-                }
+                
                 
             }
         });
@@ -333,41 +327,25 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            if let Some(new_mode) = udp_server_mode_receiver.try_recv().ok(){
-                mode = new_mode;
-            }
-            if mode == 0 {
-                handle
-                    .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                    .await
-                    .unwrap();
-            }
-            if mode == 1 {
-                handle
-                    .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
-                    .await
-                    .unwrap();
-            }
+            handle
+                .call(
+                    message_selector, 
+                    message_in_port_id, 
+                    Pmt::Blob(buf[0..n].to_vec()))
+                .await
+                .unwrap();
             tx_endpoint.send(e).unwrap();
             tx_endpoint2.send(e).unwrap();
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                if let Some(new_mode) = udp_server_mode_receiver.try_recv().ok(){
-                    mode = new_mode;
-                }
-                if mode == 0 {
-                    handle
-                        .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                        .await
-                        .unwrap();
-                }
-                if mode == 1 {
-                    handle
-                        .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
-                        .await
-                        .unwrap();
-                }
+                handle
+                .call(
+                    message_selector, 
+                    message_in_port_id, 
+                    Pmt::Blob(buf[0..n].to_vec()))
+                .await
+                .unwrap();
             }
         });
 
@@ -417,23 +395,15 @@ fn main() -> Result<()> {
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((n, s)) => {
-                        if let Some(new_mode) = udp_client_mode_receiver.try_recv().ok(){
-                            mode = new_mode;
-                        }
-                        if mode == 0 {
-                            println!("sending frame size {} from {:?} in WLAN mode", n, s);
-                            handle
-                                .call(wlan_mac, 0, Pmt::Blob(buf[0..n].to_vec()))
-                                .await
-                                .unwrap()
-                        }
-                        if mode == 1 {
-                            println!("sending frame size {} from {:?} in Zigbee mode", n, s);
-                            handle
-                                .call(zigbee_mac, 1, Pmt::Blob(buf[0..n].to_vec()))
-                                .await
-                                .unwrap()
-                        }
+                        println!("sending frame size {} from {:?}", n, s);
+                        handle
+                            .call(
+                                message_selector,
+                                message_in_port_id,
+                                Pmt::Blob(buf[0..n].to_vec())
+                            )
+                            .await
+                            .unwrap();
                     }
                     Err(e) => println!("ERROR: {:?}", e),
                 }
@@ -502,9 +472,6 @@ fn main() -> Result<()> {
         // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
-            mode_sender.send(new_index)?;
-            udp_client_mode_sender.send(new_index)?;
-            udp_server_mode_sender.send(new_index)?;
             async_io::block_on(
                 input_handle
                     .call(
@@ -518,6 +485,14 @@ fn main() -> Result<()> {
                     .call(
                         sink_selector, 
                         input_index_port_id, 
+                        Pmt::U32(new_index)
+                    )
+            )?;
+            async_io::block_on(
+                input_handle
+                    .call(
+                        message_selector, 
+                        output_selector_port_id, 
                         Pmt::U32(new_index)
                     )
             )?;
