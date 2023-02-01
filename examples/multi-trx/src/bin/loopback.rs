@@ -24,6 +24,7 @@ use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
 
+use multitrx::MessageSelector;
 
 use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
 use wlan::Decoder as WlanDecoder;
@@ -238,7 +239,21 @@ fn main() -> Result<()> {
     fg.connect_stream(zigbee_mac, "out", zigbee_modulator, "in")?;
     fg.connect_stream(zigbee_modulator, "out", zigbee_iq_delay, "in")?;
     fg.connect_stream(zigbee_iq_delay, "out", sink_selector, "in1")?;
-    
+
+
+    // message input selector
+    let message_selector = MessageSelector::new();
+    let meassage_in_port_id = message_selector
+        .message_input_name_to_id("message_in")
+        .expect("No message_in port found!");
+    let output_selector_port_id = message_selector
+        .message_input_name_to_id("output_selector")
+        .expect("No output_selector port found!");
+    let message_selector = fg.add_block(message_selector);
+    fg.connect_message(message_selector, "out0", wlan_mac, "tx")?;
+    fg.connect_message(message_selector, "out1", zigbee_mac, "tx")?;
+
+
 
     let rt = Runtime::new();
     let (_fg, mut handle) = block_on(rt.start(fg));
@@ -256,6 +271,7 @@ fn main() -> Result<()> {
         }
     });
 
+
     let mut seq = 0u64;
     let (sender, receiver) = channel();
     let mut input_handle = handle.clone();
@@ -269,30 +285,38 @@ fn main() -> Result<()> {
             }
             println!("Mode {:?}", mode);
             //WLAN message
-            if mode == 0 {
-                handle
-                    .call(
-                        wlan_mac,
-                        0,
-                        Pmt::Any(Box::new((
-                            format!("FutureSDR {}", seq).as_bytes().to_vec(),
-                            WlanMcs::Qpsk_1_2,
-                        ))),
-                    )
-                    .await
-                    .unwrap();   
-            }
-            //Zigbee message
-            if mode == 1 {
-                handle
-                    .call(
-                        zigbee_mac,
-                        1,
-                        Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
-                    )
-                    .await
-                    .unwrap();
-            }
+            // if mode == 0 {
+            //     handle
+            //         .call(
+            //             wlan_mac,
+            //             0,
+            //             Pmt::Any(Box::new((
+            //                 format!("FutureSDR {}", seq).as_bytes().to_vec(),
+            //                 WlanMcs::Qpsk_1_2,
+            //             ))),
+            //         )
+            //         .await
+            //         .unwrap();   
+            // //}
+            // //Zigbee message
+            // if mode == 1 {
+            //     handle
+            //         .call(
+            //             zigbee_mac,
+            //             1,
+            //             Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
+            //         )
+            //         .await
+            //         .unwrap();
+            // }
+            handle
+                .call(
+                    message_selector,
+                    meassage_in_port_id,
+                    Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
+                )
+                .await
+                .unwrap();
             seq += 1;
         }
     });
@@ -329,10 +353,19 @@ fn main() -> Result<()> {
                         Pmt::U32(new_index)
                     )
             )?;
+            async_io::block_on(
+                input_handle
+                    .call(
+                        message_selector, 
+                        output_selector_port_id, 
+                        Pmt::U32(new_index)
+                    )
+            )?;
         } else {
             println!("Input not parsable: {}", input);
         }
     }
     
+
 
 }

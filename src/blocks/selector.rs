@@ -106,7 +106,8 @@ where
                             match p {
                                 Pmt::U32(v) => block.input_index = (v as usize) % N,
                                 Pmt::U64(v) => block.input_index = (v as usize) % N,
-                                _ => todo!(),
+                                //_ => todo!(),
+                                x => {dbg!(x);},
                             }
                             Ok(Pmt::U32(block.input_index as u32))
                         }
@@ -123,7 +124,8 @@ where
                             match p {
                                 Pmt::U32(v) => block.output_index = (v as usize) % M,
                                 Pmt::U64(v) => block.output_index = (v as usize) % M,
-                                _ => todo!(),
+                                //_ => todo!(),
+                                x => {dbg!(x);},
                             }
                             Ok(Pmt::U32(block.output_index as u32))
                         }

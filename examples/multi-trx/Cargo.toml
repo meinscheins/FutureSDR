@@ -1,10 +1,13 @@
 [package]
-name = "multi-trx"
+name = "multitrx"
 version = "0.1.0"
 edition = "2021"
 default-run = "rx"
 
 [workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "rx"
