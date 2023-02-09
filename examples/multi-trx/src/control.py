@@ -4,7 +4,7 @@ import argparse
 import tkinter
 
 parser = argparse.ArgumentParser(
-    prog = 'UAV PHY control',
+    prog = 'control',
     description = 'Sends messages to the FutureSDR flowgraph API to switch PHY layers of the UAV transmission')
 parser.add_argument("-u", "--url", default = "http://127.0.0.1:1337/api/fg/0/") #url of flowgraph api
 
