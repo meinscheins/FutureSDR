@@ -98,6 +98,9 @@
 //! | [WavSink](audio::WavSink) | Writes samples to a WAV file | ❌ |
 //!
 
+#[cfg(feature = "aaronia")]
+pub mod aaronia;
+
 mod agc;
 pub use agc::{Agc, AgcBuilder};
 
