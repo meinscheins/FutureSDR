@@ -251,10 +251,10 @@ fn main() -> Result<()> {
         .expect("No freq port found!");
     let sink_center_freq_input_port_id = sink
         .message_input_name_to_id("center_freq")
-        .expect("No freq port found!");
+        .expect("No center_freq port found!");
     let sink_freq_offset_input_port_id = sink
         .message_input_name_to_id("freq_offset")
-        .expect("No freq port found!");
+        .expect("No freq_offset port found!");
     let sink_sample_rate_input_port_id = sink
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
@@ -268,10 +268,10 @@ fn main() -> Result<()> {
         .expect("No freq port found!");
     let src_center_freq_input_port_id = src
         .message_input_name_to_id("center_freq")
-        .expect("No freq port found!");
+        .expect("No center_freq port found!");
     let src_freq_offset_input_port_id = src
         .message_input_name_to_id("freq_offset")
-        .expect("No freq port found!");
+        .expect("No freq_offset port found!");
     let src_sample_rate_input_port_id = src
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
