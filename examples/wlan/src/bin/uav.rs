@@ -218,7 +218,7 @@ fn main() -> Result<()> {
     // RECEIVER
     // ============================================
     let mut soapy = SoapySourceBuilder::new()
-        .device(Dev(soapy_dev.clone()))
+        .device(Dev(soapy_dev))
         .gain(args.rx_gain)
         .dev_channels(vec![args.soapy_rx_channel]);
     if let Some(a) = args.rx_antenna {
@@ -310,15 +310,9 @@ fn main() -> Result<()> {
         });
     }
 
-    println!("actual frequencies: (Tx center, Tx BB, Rx center, Rx BB");
-    println!("{}", soapy_dev.component_frequency(Direction::Tx, args.soapy_tx_channel, "RF").unwrap().to_string());
-    println!("{}", soapy_dev.component_frequency(Direction::Tx, args.soapy_tx_channel, "BB").unwrap().to_string());
-    println!("{}", soapy_dev.component_frequency(Direction::Rx, args.soapy_tx_channel, "RF").unwrap().to_string());
-    println!("{}", soapy_dev.component_frequency(Direction::Rx, args.soapy_tx_channel, "BB").unwrap().to_string());
-
     // we are the udp server
     if let Some(port) = args.local_port {
-        println!("Acting as UDP server.");
+        info!("Acting as UDP server.");
         let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
@@ -327,7 +321,6 @@ fn main() -> Result<()> {
             let mut buf = vec![0u8; 1024];
 
             let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            println!("sending frame size {} from {:?}", n, e);  // TODO comment out
             handle
                 .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                 .await
@@ -336,8 +329,7 @@ fn main() -> Result<()> {
             tx_endpoint.send(e).unwrap();
 
             loop {
-                let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-                println!("sending frame size {} from {:?}", n, e);  // TODO comment out
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
                 handle
                     .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                     .await
@@ -347,7 +339,7 @@ fn main() -> Result<()> {
 
         rt.spawn_background(async move {
             let endpoint = rx_endpoint.await.unwrap();
-            println!("endpoint connected to local udp server {:?}", &endpoint);
+            info!("endpoint connected to local udp server {:?}", &endpoint);
 
             loop {
                 if let Some(p) = rxed_frames.next().await {
@@ -363,7 +355,7 @@ fn main() -> Result<()> {
             }
         });
     } else if let Some(remote) = args.remote_udp {
-        println!("Acting as UDP client.");
+        info!("Acting as UDP client.");
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
@@ -373,7 +365,7 @@ fn main() -> Result<()> {
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((n, _s)) => {
-                        println!("sending frame size {} from {:?}", n, _s);  // TODO comment out
+                        //println!("sending frame size {} from {:?}", n, s);
                         handle
                             .call(mac, 0, Pmt::Blob(buf[0..n].to_vec()))
                             .await
@@ -387,28 +379,25 @@ fn main() -> Result<()> {
         rt.spawn_background(async move {
             loop {
                 if let Some(p) = rxed_frames.next().await {
-                    println!("FLAG0");
                     if let Pmt::Blob(v) = p {
                         println!("received frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
                     } else {
-                        println!("FLAG1");
                         warn!("pmt to tx was not a blob");
                     }
                 } else {
-                    println!("FLAG2");
                     warn!("cannot read from MessagePipe receiver");
                 }
             }
         });
     } else {
-        println!("No UDP forwarding configured");
+        info!("No UDP forwarding configured");
         rt.spawn_background(async move {
             loop {
                 if let Some(_p) = rxed_frames.next().await {
-                    println!("FRAAAAAAAAME");
+                    info!("FRAAAAAAAAME");
                 } else {
-                    println!("cannot read from MessagePipe receiver");
+                    warn!("cannot read from MessagePipe receiver");
                 }
             }
         });
