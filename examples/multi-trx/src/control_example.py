@@ -1,4 +1,4 @@
-import phy_controller_lib
+import PhyController
 import argparse
 import tkinter
 
@@ -9,7 +9,7 @@ parser.add_argument("-u", "--url", default = "http://127.0.0.1:1337/api/fg/0/") 
 
 args = parser.parse_args()
 flowgraph_url = args.url
-control = phy_controller_lib.phy_controller(flowgraph_url)
+control = PhyController.PhyController(flowgraph_url)
 
 #GUI
 gui = tkinter.Tk()
@@ -19,7 +19,7 @@ button_wlan = tkinter.Button(gui, command=lambda : control.select_phy(0))
 button_wlan['text'] = "WLAN"
 button_wlan.pack()
 button_bluetooth = tkinter.Button(gui, command=lambda : control.select_phy(1))
-button_bluetooth['text'] = "Bluetooth"
+button_bluetooth['text'] = "Zigbee"
 button_bluetooth.pack()
 
 gui.mainloop()

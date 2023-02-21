@@ -43,10 +43,12 @@ impl SoapySink {
             BlockMetaBuilder::new("SoapySink").blocking().build(),
             siob.build(),
             MessageIoBuilder::new()
-                .add_input("freq", Self::on_freq_port)
-                .add_input("sample_rate", Self::on_sample_rate_port)
-                .add_input("gain", Self::on_gain_port)
-                .add_input("cmd", Self::on_cmd_port)
+                    .add_input("freq", Self::on_freq_port)
+                    .add_input("gain", Self::on_gain_port)
+                    .add_input("sample_rate", Self::on_sample_rate_port)
+                    .add_input("cmd", Self::on_cmd_port)
+                    .add_input("center_freq", Self::on_center_freq_port)
+                    .add_input("freq_offset", Self::on_freq_offset_port)
                 .build(),
             Self {
                 dev: None,
@@ -74,6 +76,7 @@ impl SoapySink {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!(" TX Frequency {:?}", p);
         self.set_freq(p, &SoapyDirection::Tx)
     }
 
@@ -84,6 +87,7 @@ impl SoapySink {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("TX gain {:?}", p);
         self.set_gain(p, &SoapyDirection::Tx)
     }
 
@@ -94,6 +98,7 @@ impl SoapySink {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("TX sample rate {:?}", p);
         self.set_sample_rate(p, &SoapyDirection::Tx)
     }
 

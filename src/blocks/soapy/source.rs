@@ -76,6 +76,7 @@ impl SoapySource {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("RX frequency {:?}", p);
         self.set_freq(p, &SoapyDirection::Rx)
     }
 
@@ -86,6 +87,7 @@ impl SoapySource {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("RX gain {:?}", p);
         self.set_gain(p, &SoapyDirection::Rx)
     }
 
@@ -96,6 +98,7 @@ impl SoapySource {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("RX sample rate {:?}", p);
         self.set_sample_rate(p, &SoapyDirection::Rx)
     }
 

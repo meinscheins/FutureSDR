@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::time::Duration;
-
+use futuresdr::blocks::soapy::SoapyDevSpec::Dev;
 use futuresdr::anyhow::Result;
 use futuresdr::async_io;
 use futuresdr::async_io::block_on;
@@ -28,6 +28,8 @@ use futuresdr::runtime::buffer::circular::Circular;
 use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
+use futuresdr::soapysdr::Device;
+use futuresdr::soapysdr::Direction::{Rx, Tx};
 
 use multitrx::MessageSelector;
 
@@ -187,41 +189,41 @@ fn main() -> Result<()> {
     let filter = args.device_filter.unwrap_or_else(|| "".to_string());
     let soapy_dev = Device::new(&*filter).unwrap();
     soapy_dev
-        .set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate)
+        .set_sample_rate(Rx, args.soapy_rx_channel, sample_rate[0])
         .unwrap();
     soapy_dev
-        .set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate)
+        .set_sample_rate(Tx, args.soapy_tx_channel, sample_rate[0])
         .unwrap();
     soapy_dev
-        .set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true)
+        .set_dc_offset_mode(Tx, args.soapy_tx_channel, true)
         .unwrap();
     soapy_dev
-        .set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true)
+        .set_dc_offset_mode(Rx, args.soapy_rx_channel, true)
         .unwrap();
 
     // set tx and rx frequencies
     if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq.0, rx_freq.0) {
         // if channel has been provided, use channel center frequency from lookup-table
         soapy_dev
-            .set_frequency(Direction::Tx, args.soapy_tx_channel, tx_frequency_from_channel, "")
+            .set_frequency(Tx, args.soapy_tx_channel, tx_frequency_from_channel, "")
             .unwrap();
         soapy_dev
-            .set_frequency(Direction::Rx, args.soapy_rx_channel, rx_frequency_from_channel, "")
+            .set_frequency(Rx, args.soapy_rx_channel, rx_frequency_from_channel, "")
             .unwrap();
     }
     else {
         // else use specified center frequency and offset
         soapy_dev
-            .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", center_freq.0, "")
+            .set_component_frequency(Tx, args.soapy_tx_channel, "RF", center_freq.0, "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", rx_freq_offset.0, "")
+            .set_component_frequency(Tx, args.soapy_tx_channel, "BB", rx_freq_offset.0, "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", center_freq.0, "")
+            .set_component_frequency(Rx, args.soapy_rx_channel, "RF", center_freq.0, "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", rx_freq_offset.0, "")
+            .set_component_frequency(Rx, args.soapy_rx_channel, "BB", rx_freq_offset.0, "")
             .unwrap();
     }
 

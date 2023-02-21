@@ -1,6 +1,6 @@
 [package]
 name = "multitrx"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 default-run = "rx"
 
@@ -35,6 +35,9 @@ path = "src/bin/uav_loopback.rs"
 
 [dependencies]
 clap = { version = "3.1.18", features = ["derive"] }
-futuresdr = { path = "../..", features = ["soapy"] }
+soapysdr = { version = "0.3.2", optional = true }
+futuresdr = { path = "../.."}
 zigbee = { path = "../zigbee"}
 wlan = { path = "../wlan"}
+
+
