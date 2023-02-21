@@ -14,6 +14,8 @@ class PhyController:
         source_selector_id = -1 
         sink_selector_id = -1
         message_selector_id = -1
+        soapy_source_id = -1
+        soapy_sink_id = -1
 
         for block in self.blocks:
             if block["instance_name"] == "Selector<2, 1>_0":
@@ -23,7 +25,6 @@ class PhyController:
             if block["instance_name"] == "MessageSelector_0":
                 message_selector_id = block["id"]
 
-        # exit the script if one of the relevant blocks cannot be found
         if (source_selector_id == -1) or (sink_selector_id == -1) or (message_selector_id == -1):
             if source_selector_id == -1:
                 print("Cannot find source selector!")
