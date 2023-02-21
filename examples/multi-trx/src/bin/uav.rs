@@ -65,15 +65,12 @@ struct Args {
     /// RX Antenna
     #[clap(long)]
     rx_antenna: Option<String>,
-    /// RX Soapy Filter
-    #[clap(long)]
-    rx_filter: Option<String>,
     /// TX Antenna
     #[clap(long)]
     tx_antenna: Option<String>,
-    /// TX Soapy Filter
+    /// Soapy device Filter
     #[clap(long)]
-    tx_filter: Option<String>,
+    device_filter: Option<String>,
     /// Zigbee RX Gain
     #[clap(long, default_value_t = 50.0)]
     zigbee_rx_gain: f64,
@@ -81,14 +78,23 @@ struct Args {
     #[clap(long, default_value_t = 50.0)]
     zigbee_tx_gain: f64,
     /// Zigbee RX Channel
-    #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_rx_freq: f64,
+    #[clap(id = "zigbee-rx-channel", long, value_parser = zigbee_parse_channel)]
+    zigbee_rx_channel: Option<f64>,
     /// Zigbee TX Channel
-    #[clap(id = "zigbee-tx-channel", long, value_parser = zigbee_parse_channel, default_value = "26")]
-    zigbee_tx_freq: f64,
+    #[clap(id = "zigbee-tx-channel", long, value_parser = zigbee_parse_channel)]
+    zigbee_tx_channel: Option<f64>,
     /// Zigbee Sample Rate
     #[clap(long, default_value_t = 4e6)]
     zigbee_sample_rate: f64,
+    /// Zigbee TX/RX Center Frequency
+    #[clap(long, default_value_t = 2.45e9)]
+    zigbee_center_freq: f64,
+    /// Zigbee RX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    zigbee_rx_freq_offset: f64,
+    /// Zigbee TX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    zigbee_tx_freq_offset: f64,
     /// WLAN RX Gain
     #[clap(long, default_value_t = 40.0)]
     wlan_rx_gain: f64,
@@ -99,11 +105,20 @@ struct Args {
     #[clap(long, default_value_t = 20e6)]
     wlan_sample_rate: f64,
     /// WLAN RX Channel Number
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_rx_channel: f64,
+    #[clap(long, value_parser = wlan_parse_channel)]
+    wlan_rx_channel: Option<f64>,
     /// WLAN TX Channel Number
-    #[clap(long, value_parser = wlan_parse_channel, default_value = "34")]
-    wlan_tx_channel: f64,
+    #[clap(long, value_parser = wlan_parse_channel)]
+    wlan_tx_channel: Option<f64>,
+    /// WLAN TX/RX Center Frequency
+    #[clap(long, default_value_t = 2.45e9)]
+    wlan_center_freq: f64,
+    /// Soapy RX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    wlan_rx_freq_offset: f64,
+    /// Soapy TX Frequency Offset
+    #[clap(long, default_value_t = 0.0)]
+    wlan_tx_freq_offset: f64,
     /// Soapy RX Channel
     #[clap(long, default_value_t = 0)]
     soapy_rx_channel: usize,
@@ -128,7 +143,7 @@ struct Args {
     /// Stream Spectrum data at ws://0.0.0.0:9001
     #[clap(long, value_parser)]
     spectrum: bool,
-    // Drop policy to apply on the selector.
+    /// Drop policy to apply on the selector.
     #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
 }
@@ -153,29 +168,78 @@ fn main() -> Result<()> {
     };
 
     
-    let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_freq];
-    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_freq];
+    let rx_freq = [args.wlan_rx_channel, args.zigbee_rx_channel];
+    let tx_freq = [args.wlan_tx_channel, args.zigbee_tx_channel];
+    let center_freq = [args.wlan_center_freq, args.zigbee_center_freq];
+    let rx_freq_offset = [args.wlan_rx_freq_offset, args.zigbee_rx_freq_offset];
+    let tx_freq_offset = [args.wlan_tx_freq_offset, args.zigbee_tx_freq_offset];
     let rx_gain = [args.wlan_rx_gain, args.zigbee_rx_gain];
     let tx_gain = [args.wlan_tx_gain, args.zigbee_tx_gain];  
     let sample_rate = [args.wlan_sample_rate, args.zigbee_sample_rate];
 
     let mut fg = Flowgraph::new();
-    
-    let mut sink = SoapySinkBuilder::new()
-        .freq(tx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(tx_gain[0]);
 
-    let mut src = SoapySourceBuilder::new()
-        .freq(rx_freq[0])
-        .sample_rate(sample_rate[0])
-        .gain(rx_gain[0]);
-        
-    if let Some(f) = args.tx_filter {
-        sink = sink.filter(f);
+
+    // ==========================================
+    // Device, Source, and Sink
+    // ==========================================
+
+    let filter = args.device_filter.unwrap_or_else(|| "".to_string());
+    let soapy_dev = Device::new(&*filter).unwrap();
+    soapy_dev
+        .set_sample_rate(Direction::Rx, args.soapy_rx_channel, args.sample_rate)
+        .unwrap();
+    soapy_dev
+        .set_sample_rate(Direction::Tx, args.soapy_tx_channel, args.sample_rate)
+        .unwrap();
+    soapy_dev
+        .set_dc_offset_mode(Direction::Tx, args.soapy_tx_channel, true)
+        .unwrap();
+    soapy_dev
+        .set_dc_offset_mode(Direction::Rx, args.soapy_rx_channel, true)
+        .unwrap();
+
+    // set tx and rx frequencies
+    if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq.0, rx_freq.0) {
+        // if channel has been provided, use channel center frequency from lookup-table
+        soapy_dev
+            .set_frequency(Direction::Tx, args.soapy_tx_channel, tx_frequency_from_channel, "")
+            .unwrap();
+        soapy_dev
+            .set_frequency(Direction::Rx, args.soapy_rx_channel, rx_frequency_from_channel, "")
+            .unwrap();
     }
-    if let Some(f) = args.rx_filter {
-        src = src.filter(f);
+    else {
+        // else use specified center frequency and offset
+        soapy_dev
+            .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "RF", center_freq.0, "")
+            .unwrap();
+        soapy_dev
+            .set_component_frequency(Direction::Tx, args.soapy_tx_channel, "BB", rx_freq_offset.0, "")
+            .unwrap();
+        soapy_dev
+            .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "RF", center_freq.0, "")
+            .unwrap();
+        soapy_dev
+            .set_component_frequency(Direction::Rx, args.soapy_rx_channel, "BB", rx_freq_offset.0, "")
+            .unwrap();
+    }
+
+
+    let mut sink = SoapySinkBuilder::new()
+        .device(Dev(soapy_dev.clone()))
+        .gain(tx_gain[0])
+        .dev_channels(vec![args.soapy_tx_channel]);
+    let mut src = SoapySourceBuilder::new()
+        .device(Dev(soapy_dev))
+        .gain(rx_gain[0])
+        .dev_channels(vec![args.soapy_rx_channel]);
+
+    if let Some(a) = args.tx_antenna {
+        sink = sink.antenna(a);
+    }
+    if let Some(a) = args.rx_antenna {
+        src = src.antenna(a);
     }
 
     let sink = sink.build();
@@ -183,8 +247,14 @@ fn main() -> Result<()> {
 
     //message handler to change frequency and sample rate during runtime
     let sink_freq_input_port_id = sink
-        .message_input_name_to_id("freq") 
+        .message_input_name_to_id("freq")
         .expect("No freq port found!");
+    let sink_center_freq_input_port_id = sink
+        .message_input_name_to_id("center_freq")
+        .expect("No center_freq port found!");
+    let sink_freq_offset_input_port_id = sink
+        .message_input_name_to_id("freq_offset")
+        .expect("No freq_offset port found!");
     let sink_sample_rate_input_port_id = sink
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
@@ -194,8 +264,14 @@ fn main() -> Result<()> {
     let sink = fg.add_block(sink);
 
     let src_freq_input_port_id = src
-        .message_input_name_to_id("freq") 
+        .message_input_name_to_id("freq")
         .expect("No freq port found!");
+    let src_center_freq_input_port_id = src
+        .message_input_name_to_id("center_freq")
+        .expect("No center_freq port found!");
+    let src_freq_offset_input_port_id = src
+        .message_input_name_to_id("freq_offset")
+        .expect("No freq_offset port found!");
     let src_sample_rate_input_port_id = src
         .message_input_name_to_id("sample_rate")
         .expect("No sample_rate port found!");
@@ -203,9 +279,8 @@ fn main() -> Result<()> {
         .message_input_name_to_id("gain")
         .expect("No gain port found!");
     let src = fg.add_block(src);
-    
 
-    //Soapy Sink + Selector
+    //Soapy Sink Selector
     let sink_selector = Selector::<Complex32, 2, 1>::new(args.drop_policy);
     let input_index_port_id = sink_selector
         .message_input_name_to_id("input_index")
@@ -573,14 +648,58 @@ fn main() -> Result<()> {
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
 
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_freq_input_port_id, 
-                    Pmt::F64(rx_freq[new_index as usize])
-                )
-            )?;
+            if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq.0, rx_freq.0) {
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            src,
+                            src_freq_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(rx_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                        )
+                )?;
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            sink,
+                            sink_freq_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(tx_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                        )
+                )?;
+            }
+            else {
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            src,
+                            src_center_freq_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                        )
+                )?;
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            sink,
+                            sink_center_freq_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                        )
+                )?;
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            src,
+                            src_freq_offset_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                        )
+                )?;
+                async_io::block_on(
+                    input_handle
+                        .call(
+                            sink,
+                            sink_freq_offset_input_port_id,
+                            Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                        )
+                )?;
+            }
             async_io::block_on(
                 input_handle
                 .call(
@@ -604,14 +723,6 @@ fn main() -> Result<()> {
                     output_index_port_id, 
                     Pmt::U32(new_index)
                 )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_freq_input_port_id, 
-                        Pmt::F64(tx_freq[new_index as usize])
-                    )
             )?;
             async_io::block_on(
                 input_handle

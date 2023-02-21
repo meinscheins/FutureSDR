@@ -1,8 +1,7 @@
-use std::net::ToSocketAddrs;
-
 use async_net::SocketAddr;
 use async_net::UdpSocket;
 use futures::FutureExt;
+use std::net::ToSocketAddrs;
 
 use crate::anyhow::Result;
 use crate::runtime::Block;

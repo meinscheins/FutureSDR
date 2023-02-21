@@ -27,16 +27,11 @@ extern "C" {
 }
 
 const MAX_FRAMES: usize = 128;
-const MAX_FRAME_SIZE: usize = 127;
-const FRAME_CONTROL: u16 = 0x8841;
-const DESTINATION_PAN: u16 = 0x1aaa;
-const DESTINATION_ADDRESS: u16 = 0xffff;
-const SOURCE_ADDRESS: u16 = 0x3344;
+const MAX_FRAME_SIZE: usize = 255;
 
 pub struct Mac {
     tx_frames: VecDeque<Vec<u8>>,
     current_frame: [u8; 256],
-    sequence_number: u8,
     current_index: usize,
     current_len: usize,
     n_received: u64,
@@ -51,15 +46,6 @@ impl Mac {
         b[2] = 0x0;
         b[3] = 0xa7;
         b[4] = 0x0; // len
-        b[5] = FRAME_CONTROL.to_le_bytes()[0];
-        b[6] = FRAME_CONTROL.to_le_bytes()[1];
-        b[7] = 0x0; // seq nr
-        b[8] = DESTINATION_PAN.to_le_bytes()[0];
-        b[9] = DESTINATION_PAN.to_le_bytes()[1];
-        b[10] = DESTINATION_ADDRESS.to_le_bytes()[0];
-        b[11] = DESTINATION_ADDRESS.to_le_bytes()[1];
-        b[12] = SOURCE_ADDRESS.to_le_bytes()[0];
-        b[13] = SOURCE_ADDRESS.to_le_bytes()[1];
 
         Block::new(
             BlockMetaBuilder::new("Mac").build(),
@@ -69,11 +55,11 @@ impl Mac {
                 .add_input("tx", Self::transmit)
                 .add_input("stats", Self::stats)
                 .add_output("rxed")
+                .add_output("rftap")
                 .build(),
             Mac {
                 tx_frames: VecDeque::new(),
                 current_frame: b,
-                sequence_number: 0,
                 current_index: 0,
                 current_len: 0,
                 n_received: 0,
@@ -121,6 +107,14 @@ impl Mac {
                         #[cfg(target_arch = "wasm32")]
                         rxed_frame(data.clone());
 
+                        let mut rftap = vec![0; data.len() + 12];
+                        rftap[0..4].copy_from_slice("RFta".as_bytes());
+                        rftap[4..6].copy_from_slice(&3u16.to_le_bytes());
+                        rftap[6..8].copy_from_slice(&1u16.to_le_bytes());
+                        rftap[8..12].copy_from_slice(&195u32.to_le_bytes());
+                        rftap[12..].copy_from_slice(&data);
+                        mio.output_mut(1).post(Pmt::Blob(rftap)).await;
+
                         self.n_received += 1;
                         let s = String::from_iter(
                             data.iter()
@@ -166,12 +160,12 @@ impl Mac {
                             MAX_FRAMES
                         );
                     } else {
-                        // 9 header + 2 crc
-                        if data.len() > MAX_FRAME_SIZE - 11 {
+                        // 2 crc
+                        if data.len() > MAX_FRAME_SIZE - 2 {
                             warn!(
                                 "ZigBee Mac: TX frame too large ({}, max {}). Dropping.",
                                 data.len(),
-                                MAX_FRAME_SIZE - 11
+                                MAX_FRAME_SIZE - 2
                             );
                         } else {
                             self.tx_frames.push_back(data);
@@ -216,23 +210,21 @@ impl Kernel for Mac {
 
             if self.current_len == 0 {
                 if let Some(v) = self.tx_frames.pop_front() {
-                    self.current_frame[4] = (v.len() + 11) as u8;
-                    self.current_frame[7] = self.sequence_number;
-                    self.sequence_number = self.sequence_number.wrapping_add(1);
+                    self.current_frame[4] = (v.len() + 2) as u8;
                     unsafe {
                         std::ptr::copy_nonoverlapping(
                             v.as_ptr(),
-                            self.current_frame.as_mut_ptr().add(14),
+                            self.current_frame.as_mut_ptr().add(5),
                             v.len(),
                         );
                     }
 
-                    let crc = Self::calc_crc(&self.current_frame[5..14 + v.len()]);
-                    self.current_frame[14 + v.len()] = crc.to_le_bytes()[0];
-                    self.current_frame[15 + v.len()] = crc.to_le_bytes()[1];
+                    let crc = Self::calc_crc(&self.current_frame[5..5 + v.len()]);
+                    self.current_frame[5 + v.len()] = crc.to_le_bytes()[0];
+                    self.current_frame[6 + v.len()] = crc.to_le_bytes()[1];
 
-                    // 4 preamble + 1 len + 9 header + 2 crc
-                    self.current_len = v.len() + 16;
+                    // 4 preamble + 1 len + 2 crc
+                    self.current_len = v.len() + 7;
                     self.current_index = 0;
                     sio.output(0).add_tag(0, Tag::Id(self.current_len as u64));
                     debug!("sending frame, len {}", self.current_len);
