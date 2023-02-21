@@ -96,6 +96,27 @@ impl SoapySink {
     ) -> Result<Pmt> {
         self.set_sample_rate(p, &SoapyDirection::Tx)
     }
+
+    #[message_handler]
+    fn on_center_freq_port(
+        &mut self,
+        _mio: &mut MessageIo<Self>,
+        _meta: &mut BlockMeta,
+        p: Pmt,
+    ) -> Result<Pmt> {
+        self.set_center_freq(p, &SoapyDirection::Tx)
+    }
+
+    #[message_handler]
+    fn on_freq_offset_port(
+        &mut self,
+        _mio: &mut MessageIo<Self>,
+        _meta: &mut BlockMeta,
+        p: Pmt,
+    ) -> Result<Pmt> {
+        self.set_freq_offset(p, &SoapyDirection::Tx)
+    }
+
 }
 
 #[doc(hidden)]

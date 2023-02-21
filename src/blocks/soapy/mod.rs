@@ -95,6 +95,48 @@ impl<T> SoapyDevice<T> {
         }
     }
 
+    fn set_center_freq(&mut self, p: Pmt, default_dir: &SoapyDirection) -> Result<Pmt> {
+        let dev = self.dev.as_mut().context("no dev")?;
+        if let Pmt::VecPmt(vec) = p {
+                match (&vec[0], &vec[1]) {
+                    (Pmt::F64(center_freq), Pmt::U32(channel)) =>{
+                        if default_dir.is_rx(&SoapyDirection::None) {
+                            dev.set_component_frequency(Rx, *channel as usize, "RF", *center_freq, "")?;
+                        }
+                        if default_dir.is_tx(&SoapyDirection::None) {
+                            dev.set_component_frequency(Tx, *channel as usize, "RF", *center_freq, "")?;
+                        }
+                        Ok(Pmt::Ok)
+                    }
+                    _ => Ok(Pmt::InvalidValue)
+                }
+            }
+        else {
+            Ok(Pmt::InvalidValue)
+        }
+    }
+
+    fn set_freq_offset(&mut self, p: Pmt, default_dir: &SoapyDirection) -> Result<Pmt> {
+        let dev = self.dev.as_mut().context("no dev")?;
+        match p {
+            Pmt::VecPmt(vec) => {
+                match (&vec[0], &vec[1]) {
+                    (Pmt::F64(freq_offset), Pmt::U32(channel)) =>{
+                        if default_dir.is_rx(&SoapyDirection::None) {
+                            dev.set_component_frequency(Rx, *channel as usize, "BB", *freq_offset, "")?;
+                        }
+                        if default_dir.is_tx(&SoapyDirection::None) {
+                            dev.set_component_frequency(Tx, *channel as usize, "BB", *freq_offset, "")?;
+                        }
+                        Ok(Pmt::Ok)
+                    }
+                    _ => Ok(Pmt::InvalidValue)
+                }
+            }
+            _ => Ok(Pmt::InvalidValue)  
+        }
+    }
+
     fn apply_config(&mut self, cfg: &SoapyConfig, default_dir: &SoapyDirection) -> Result<()> {
         use SoapyConfigItem as SCI;
 

@@ -47,6 +47,8 @@ impl SoapySource {
                 .add_input("gain", Self::on_gain_port)
                 .add_input("sample_rate", Self::on_sample_rate_port)
                 .add_input("cmd", Self::on_cmd_port)
+                .add_input("center_freq", Self::on_center_freq_port)
+                .add_input("freq_offset", Self::on_freq_offset_port)
                 .build(),
             SoapySource {
                 dev: None,
@@ -96,6 +98,28 @@ impl SoapySource {
     ) -> Result<Pmt> {
         self.set_sample_rate(p, &SoapyDirection::Rx)
     }
+
+    #[message_handler]
+    fn on_center_freq_port(
+        &mut self,
+        _mio: &mut MessageIo<Self>,
+        _meta: &mut BlockMeta,
+        p: Pmt,
+    ) -> Result<Pmt> {
+        self.set_center_freq(p, &SoapyDirection::Rx)
+    }
+
+    #[message_handler]
+    fn on_freq_offset_port(
+        &mut self,
+        _mio: &mut MessageIo<Self>,
+        _meta: &mut BlockMeta,
+        p: Pmt,
+    ) -> Result<Pmt> {
+        self.set_freq_offset(p, &SoapyDirection::Rx)
+    }
+
+
 }
 
 #[doc(hidden)]
