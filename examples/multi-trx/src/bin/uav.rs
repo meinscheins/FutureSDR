@@ -202,7 +202,7 @@ fn main() -> Result<()> {
         .unwrap();
 
     // set tx and rx frequencies
-    if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq.0, rx_freq.0) {
+    if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq[0], rx_freq[0]) {
         // if channel has been provided, use channel center frequency from lookup-table
         soapy_dev
             .set_frequency(Tx, args.soapy_tx_channel, tx_frequency_from_channel, "")
@@ -214,16 +214,16 @@ fn main() -> Result<()> {
     else {
         // else use specified center frequency and offset
         soapy_dev
-            .set_component_frequency(Tx, args.soapy_tx_channel, "RF", center_freq.0, "")
+            .set_component_frequency(Tx, args.soapy_tx_channel, "RF", center_freq[0], "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Tx, args.soapy_tx_channel, "BB", rx_freq_offset.0, "")
+            .set_component_frequency(Tx, args.soapy_tx_channel, "BB", tx_freq_offset[0], "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Rx, args.soapy_rx_channel, "RF", center_freq.0, "")
+            .set_component_frequency(Rx, args.soapy_rx_channel, "RF", center_freq[0], "")
             .unwrap();
         soapy_dev
-            .set_component_frequency(Rx, args.soapy_rx_channel, "BB", rx_freq_offset.0, "")
+            .set_component_frequency(Rx, args.soapy_rx_channel, "BB", rx_freq_offset[0], "")
             .unwrap();
     }
 
@@ -650,13 +650,13 @@ fn main() -> Result<()> {
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
 
-            if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq.0, rx_freq.0) {
+            if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq[new_index as usize], rx_freq[new_index as usize]) {
                 async_io::block_on(
                     input_handle
                         .call(
                             src,
                             src_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(rx_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(rx_frequency_from_channel), Pmt::U32(args.soapy_rx_channel as u32)])
                         )
                 )?;
                 async_io::block_on(
@@ -664,7 +664,7 @@ fn main() -> Result<()> {
                         .call(
                             sink,
                             sink_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(tx_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(tx_frequency_from_channel), Pmt::U32(args.soapy_tx_channel as u32)])
                         )
                 )?;
             }
@@ -674,7 +674,7 @@ fn main() -> Result<()> {
                         .call(
                             src,
                             src_center_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
                         )
                 )?;
                 async_io::block_on(
@@ -682,7 +682,7 @@ fn main() -> Result<()> {
                         .call(
                             sink,
                             sink_center_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
                         )
                 )?;
                 async_io::block_on(
@@ -690,7 +690,7 @@ fn main() -> Result<()> {
                         .call(
                             src,
                             src_freq_offset_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
                         )
                 )?;
                 async_io::block_on(
@@ -698,7 +698,7 @@ fn main() -> Result<()> {
                         .call(
                             sink,
                             sink_freq_offset_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel)])
+                            Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
                         )
                 )?;
             }
