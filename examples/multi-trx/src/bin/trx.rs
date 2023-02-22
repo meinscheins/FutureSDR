@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use futuresdr::futures::channel::mpsc;
@@ -25,6 +24,7 @@ use futuresdr::runtime::Flowgraph;
 use futuresdr::runtime::Pmt;
 use futuresdr::runtime::Runtime;
 
+use multitrx::MessageSelector;
 
 use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
 use wlan::parse_channel as wlan_parse_channel;
@@ -319,7 +319,18 @@ fn main() -> Result<()> {
     fg.connect_stream(zigbee_mac, "out", zigbee_modulator, "in")?;
     fg.connect_stream(zigbee_modulator, "out", zigbee_iq_delay, "in")?;
     fg.connect_stream(zigbee_iq_delay, "out", sink_selector, "in1")?;
-    
+
+    // message input selector
+    let message_selector = MessageSelector::new();
+    let message_in_port_id = message_selector
+        .message_input_name_to_id("message_in")
+        .expect("No message_in port found!");
+    let output_selector_port_id = message_selector
+        .message_input_name_to_id("output_selector")
+        .expect("No output_selector port found!");
+    let message_selector = fg.add_block(message_selector);
+    fg.connect_message(message_selector, "out0", wlan_mac, "tx")?;
+    fg.connect_message(message_selector, "out1", zigbee_mac, "tx")?;
 
     let rt = Runtime::new();
     let (_fg, mut handle) = block_on(rt.start(fg));
@@ -337,42 +348,19 @@ fn main() -> Result<()> {
     });
 
     let mut seq = 0u64;
-    let (mode_sender, mode_receiver) = channel();
     let mut input_handle = handle.clone();
-    let mut mode = 0;  
 
     rt.spawn_background(async move {
         loop {
             Timer::after(Duration::from_secs_f32(0.8)).await;
-            if let Some(new_mode) = mode_receiver.try_recv().ok(){
-                mode = new_mode;
-            }
-            println!("Mode {:?}", mode);
-            //WLAN message
-            if mode == 0 {
-                handle
-                    .call(
-                        wlan_mac,
-                        0,
-                        Pmt::Any(Box::new((
-                            format!("FutureSDR {}", seq).as_bytes().to_vec(),
-                            WlanMcs::Qpsk_1_2,
-                        ))),
-                    )
-                    .await
-                    .unwrap();   
-            }
-            //Zigbee message
-            if mode == 1 {
-                handle
-                    .call(
-                        zigbee_mac,
-                        1,
-                        Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
-                    )
-                    .await
-                    .unwrap();
-            }
+            handle
+                .call(
+                    message_selector,
+                    message_in_port_id,
+                    Pmt::Blob(format!("FutureSDR {}", seq).as_bytes().to_vec()),
+                )
+                .await
+                .unwrap();
             seq += 1;
         }
     });
@@ -390,7 +378,15 @@ fn main() -> Result<()> {
         // If the user entered a valid number, set the new frequency and sample rate by sending a message to the `FlowgraphHandle`
         if let Ok(new_index) = input.parse::<u32>() {
             println!("Setting source index to {}", input);
-            mode_sender.send(new_index)?;
+            
+            async_io::block_on(
+                input_handle
+                    .call(
+                        message_selector, 
+                        output_selector_port_id, 
+                        Pmt::U32(new_index)
+                    )
+            )?;
 
             async_io::block_on(
                 input_handle

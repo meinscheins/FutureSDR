@@ -14,12 +14,12 @@ control = PhyController.PhyController(flowgraph_url)
 #GUI
 gui = tkinter.Tk()
 gui.title("PHY layer switch")
-gui.geometry("100x100")
+gui.geometry("200x100")
 button_wlan = tkinter.Button(gui, command=lambda : control.select_phy(0))
 button_wlan['text'] = "WLAN"
 button_wlan.pack()
-button_bluetooth = tkinter.Button(gui, command=lambda : control.select_phy(1))
-button_bluetooth['text'] = "Zigbee"
-button_bluetooth.pack()
+button_zigbee = tkinter.Button(gui, command=lambda : control.select_phy(1))
+button_zigbee['text'] = "Zigbee"
+button_zigbee.pack()
 
 gui.mainloop()

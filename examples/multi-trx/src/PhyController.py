@@ -13,7 +13,7 @@ class PhyController:
         self.tx_freq = [5170e6, 2480e6]
         self.rx_gain = [60, 50]
         self.tx_gain = [60, 50]
-        self.sample_rate = [20e6, 40e6]
+        self.sample_rate = [4e6, 4e6]
 
         # get id of relevant blocks
         source_selector_id = -1 
@@ -83,11 +83,11 @@ class PhyController:
         requests.post(self.sink_selector_url, json = {"U32" : phy})
         requests.post(self.message_selector_url, json = {"U32" : phy})
         requests.post(self.soapy_source_freq_url, json = {"F64" : int(self.rx_freq[phy])})
-        requests.post(self.soapy_source_gain_url, json = {"F64" : int(self.rx_gain[phy])})
         requests.post(self.soapy_source_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
+        requests.post(self.soapy_source_gain_url, json = {"F64" : int(self.rx_gain[phy])})
         requests.post(self.soapy_sink_freq_url, json = {"F64" : int(self.tx_freq[phy])})
-        requests.post(self.soapy_sink_gain_url, json = {"F64" : int(self.tx_gain[phy])})
         requests.post(self.soapy_sink_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
+        requests.post(self.soapy_sink_gain_url, json = {"F64" : int(self.tx_gain[phy])})
 
         self.current_phy = phy
 
