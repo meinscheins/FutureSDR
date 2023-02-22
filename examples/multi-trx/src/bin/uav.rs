@@ -636,6 +636,141 @@ fn main() -> Result<()> {
         });
     }
 
+    // protocol switching message handler:
+    info!("listening for protocol switch on port 1339.");
+    let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 1339))).unwrap();
+
+    rt.spawn_background(async move {
+        let mut buf = vec![0u8; 1024];
+        loop {
+            match socket.recv_from(&mut buf).await {
+                Ok((n, s)) => {
+                    let the_string = std::str::from_utf8(&buf[0..n]).expect("not UTF-8");
+                    let the_number = the_string.trim_end().parse::<u32>().unwrap();
+                    println!("received protocol number {} from {:?}", the_number, s);
+
+                    if (the_number as usize) < tx_freq.len() {
+                        let new_index = the_number as u32;
+                        println!("Setting source index to {}", new_index);
+                        if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq[new_index as usize], rx_freq[new_index as usize]) {
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        src,
+                                        src_freq_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(rx_frequency_from_channel), Pmt::U32(args.soapy_rx_channel as u32)])
+                                    )
+                            );
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        sink,
+                                        sink_freq_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(tx_frequency_from_channel), Pmt::U32(args.soapy_tx_channel as u32)])
+                                    )
+                            );
+                        } else {
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        src,
+                                        src_center_freq_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
+                                    )
+                            );
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        sink,
+                                        sink_center_freq_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
+                                    )
+                            );
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        src,
+                                        src_freq_offset_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
+                                    )
+                            );
+                            async_io::block_on(
+                                input_handle
+                                    .call(
+                                        sink,
+                                        sink_freq_offset_input_port_id,
+                                        Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
+                                    )
+                            );
+                        }
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    src,
+                                    src_sample_rate_input_port_id,
+                                    Pmt::F64(sample_rate[new_index as usize])
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    src,
+                                    src_gain_input_port_id,
+                                    Pmt::F64(rx_gain[new_index as usize])
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    src_selector,
+                                    output_index_port_id,
+                                    Pmt::U32(new_index)
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    sink,
+                                    sink_sample_rate_input_port_id,
+                                    Pmt::F64(sample_rate[new_index as usize])
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    sink,
+                                    sink_gain_input_port_id,
+                                    Pmt::F64(tx_gain[new_index as usize])
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    sink_selector,
+                                    input_index_port_id,
+                                    Pmt::U32(new_index)
+                                )
+                        );
+                        async_io::block_on(
+                            input_handle
+                                .call(
+                                    message_selector,
+                                    output_selector_port_id,
+                                    Pmt::U32(new_index)
+                                )
+                        );
+                    }
+                    else {
+                        println!("Invalid protocol index.")
+                    }
+                }
+                Err(e) => println!("ERROR: {:?}", e),
+            }
+        }
+    });
+
+    let socket_protocol_num = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
+
     // Keep asking user for the selection
     loop {
         println!("Enter a new output index");
@@ -647,120 +782,8 @@ fn main() -> Result<()> {
         input.retain(|c| !c.is_whitespace());
 
         // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
-        if let Ok(new_index) = input.parse::<u32>() {
-            println!("Setting source index to {}", input);
-
-            if let (Some(tx_frequency_from_channel), Some(rx_frequency_from_channel)) = (tx_freq[new_index as usize], rx_freq[new_index as usize]) {
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            src,
-                            src_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(rx_frequency_from_channel), Pmt::U32(args.soapy_rx_channel as u32)])
-                        )
-                )?;
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            sink,
-                            sink_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(tx_frequency_from_channel), Pmt::U32(args.soapy_tx_channel as u32)])
-                        )
-                )?;
-            }
-            else {
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            src,
-                            src_center_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
-                        )
-                )?;
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            sink,
-                            sink_center_freq_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
-                        )
-                )?;
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            src,
-                            src_freq_offset_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
-                        )
-                )?;
-                async_io::block_on(
-                    input_handle
-                        .call(
-                            sink,
-                            sink_freq_offset_input_port_id,
-                            Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
-                        )
-                )?;
-            }
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_sample_rate_input_port_id, 
-                    Pmt::F64(sample_rate[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src, 
-                    src_gain_input_port_id, 
-                    Pmt::F64(rx_gain[new_index as usize])
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                .call(
-                    src_selector, 
-                    output_index_port_id, 
-                    Pmt::U32(new_index)
-                )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_sample_rate_input_port_id, 
-                        Pmt::F64(sample_rate[new_index as usize])
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink, 
-                        sink_gain_input_port_id, 
-                        Pmt::F64(tx_gain[new_index as usize])
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        sink_selector, 
-                        input_index_port_id, 
-                        Pmt::U32(new_index)
-                    )
-            )?;
-            async_io::block_on(
-                input_handle
-                    .call(
-                        message_selector, 
-                        output_selector_port_id, 
-                        Pmt::U32(new_index)
-                    )
-            )?;
-        } else {
-            println!("Input not parsable: {}", input);
-        }
+        block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, 1339))).unwrap();
+        println!("TEEEEST")
     }
 
 }
