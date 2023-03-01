@@ -685,6 +685,7 @@ fn main() -> Result<()> {
                                         sink_center_freq_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
                                     )
+                                
                             );
                             async_io::block_on(
                                 input_handle

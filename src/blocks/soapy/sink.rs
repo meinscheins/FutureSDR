@@ -109,6 +109,7 @@ impl SoapySink {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("TX Center Frequency {:?}", p);
         self.set_center_freq(p, &SoapyDirection::Tx)
     }
 
@@ -119,6 +120,7 @@ impl SoapySink {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("TX Frequency Offset{:?}", p);
         self.set_freq_offset(p, &SoapyDirection::Tx)
     }
 

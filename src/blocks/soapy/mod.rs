@@ -101,9 +101,11 @@ impl<T> SoapyDevice<T> {
                 match (&vec[0], &vec[1]) {
                     (Pmt::F64(center_freq), Pmt::U32(channel)) =>{
                         if default_dir.is_rx(&SoapyDirection::None) {
+                            println!("Center freq: {0} on channel {1}", center_freq, channel);
                             dev.set_component_frequency(Rx, *channel as usize, "RF", *center_freq, "")?;
                         }
                         if default_dir.is_tx(&SoapyDirection::None) {
+                            println!("Center freq: {0} on channel {1}", center_freq, channel);
                             dev.set_component_frequency(Tx, *channel as usize, "RF", *center_freq, "")?;
                         }
                         Ok(Pmt::Ok)
@@ -123,9 +125,11 @@ impl<T> SoapyDevice<T> {
                 match (&vec[0], &vec[1]) {
                     (Pmt::F64(freq_offset), Pmt::U32(channel)) =>{
                         if default_dir.is_rx(&SoapyDirection::None) {
+                            println!("Frq offset: {0} on channel {1}", freq_offset, channel);
                             dev.set_component_frequency(Rx, *channel as usize, "BB", *freq_offset, "")?;
                         }
                         if default_dir.is_tx(&SoapyDirection::None) {
+                            println!("Frq offset: {0} on channel {1}", freq_offset, channel);
                             dev.set_component_frequency(Tx, *channel as usize, "BB", *freq_offset, "")?;
                         }
                         Ok(Pmt::Ok)
