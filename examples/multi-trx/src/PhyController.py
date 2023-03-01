@@ -14,6 +14,9 @@ class PhyController:
         self.rx_gain = [60, 50]
         self.tx_gain = [60, 50]
         self.sample_rate = [4e6, 4e6]
+        self.channel = [0, 1]
+        self.center_freq = [2.45e9, 2,45e9]
+        self.freq_offset = [0, 0]
 
         # get id of relevant blocks
         source_selector_id = -1 
@@ -53,29 +56,35 @@ class PhyController:
         self.soapy_source_freq_url = "{0}block/{1}/call/0/".format(url, soapy_source_id)
         self.soapy_source_gain_url = "{0}block/{1}/call/1/".format(url, soapy_source_id)
         self.soapy_source_sample_rate_url = "{0}block/{1}/call/2/".format(url, soapy_source_id)
+        self.soapy_source_center_freq_url = "{0}block/{1}/call/4/".format(url, soapy_source_id)
+        self.soapy_source_freq_offset_url = "{0}block/{1}/call/5/".format(url, soapy_source_id)
         self.soapy_sink_freq_url = "{0}block/{1}/call/0/".format(url, soapy_sink_id)
         self.soapy_sink_gain_url = "{0}block/{1}/call/1/".format(url, soapy_sink_id)
         self.soapy_sink_sample_rate_url = "{0}block/{1}/call/2/".format(url, soapy_sink_id)
+        self.soapy_sink_center_freq_url = "{0}block/{1}/call/4/".format(url, soapy_sink_id)
+        self.soapy_sink_freq_offset_url = "{0}block/{1}/call/5/".format(url, soapy_sink_id)
 
-    #sets rx frequency of the corresponing PHY layer
+    #sets rx frequency  of the corresponding phy
     def set_rx_frequency(self, phy, frequency):
         self.rx_freq[phy] = frequency
     
-    #sets tx frequency of the corresponing PHY layer
+    #sets tx frequency  of the corresponding phy
     def set_tx_frequency(self, phy, frequency):
         self.tx_freq[phy] = frequency
 
-    #set rx gain of the corresponding PHY layer
+    #set rx gain  of the corresponding phy
     def set_rx_gain(self, phy, frequency):
         self.rx_gain[phy] = frequency
 
-    #set tx gain of the corresponding PHY layer
+    #set tx gain  of the corresponding phy
     def set_tx_gain(self, phy, gain):
         self.tx_gain[phy] = gain
 
-    #sets sample rate of the corresponding PHY layer 
+    #sets sample rate of the corresponding phy
     def set_sample_rate(self, phy, sample_rate):
         self.sample_rate[phy] = sample_rate
+
+    #sets channel of the corresponding phy
 
     #select the PHY protocol (WLAN = 0, Bluetooth =1)
     def select_phy(self, phy):
@@ -83,11 +92,16 @@ class PhyController:
         requests.post(self.sink_selector_url, json = {"U32" : phy})
         requests.post(self.message_selector_url, json = {"U32" : phy})
         requests.post(self.soapy_source_freq_url, json = {"F64" : int(self.rx_freq[phy])})
-        requests.post(self.soapy_source_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
         requests.post(self.soapy_source_gain_url, json = {"F64" : int(self.rx_gain[phy])})
+        requests.post(self.soapy_source_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
         requests.post(self.soapy_sink_freq_url, json = {"F64" : int(self.tx_freq[phy])})
-        requests.post(self.soapy_sink_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
         requests.post(self.soapy_sink_gain_url, json = {"F64" : int(self.tx_gain[phy])})
+        requests.post(self.soapy_sink_sample_rate_url, json = {"F64" : int(self.sample_rate[phy])})
+
+        #requests.post(self.soapy_source_center_freq_url, json = {"F64" : int(2.45e9), "U32" : 0})
+        #requests.post(self.soapy_sink_center_freq_url, json = {"F64" : int(4.45e9), "U32" : 1})
+        #requests.post(self.soapy_source_freq_offset_url, json = {"F64" : int(30e6), "U32" : 0})
+        #requests.post(self.soapy_sink_freq_offset_url, json = {"F64" : int(400e6), "U32" : 1})
 
         self.current_phy = phy
 
@@ -100,12 +114,12 @@ class PhyController:
         requests.post(self.source_selector_url, json = {"U32" : self.current_phy})
         requests.post(self.sink_selector_url, json = {"U32" : self.current_phy})
         requests.post(self.message_selector_url, json = {"U32" : self.current_phy})
-        requests.post(self.soapy_source_freq_url, json = {"F64" : self.rx_freq[self.current_phy]})
-        requests.post(self.soapy_source_gain_url, json = {"F64" : self.rx_gain[self.current_phy]})
-        requests.post(self.soapy_source_sample_rate_url, json = {"F64" : self.sample_rate[self.current_phy]})
-        requests.post(self.soapy_sink_freq_url, json = {"F64" : self.tx_freq[self.current_phy]})
-        requests.post(self.soapy_sink_gain_url, json = {"F64" : self.tx_gain[self.current_phy]})
-        requests.post(self.soapy_sink_sample_rate_url, json = {"F64" : self.sample_rate[self.current_phy]})
+        requests.post(self.soapy_source_freq_url, json = {"F64" : int(self.rx_freq[self.current_phy])})
+        requests.post(self.soapy_source_gain_url, json = {"F64" : int(self.rx_gain[self.current_phy])})
+        requests.post(self.soapy_source_sample_rate_url, json = {"F64" : int(self.sample_rate[self.current_phy])})
+        requests.post(self.soapy_sink_freq_url, json = {"F64" : int(self.tx_freq[self.current_phy])})
+        requests.post(self.soapy_sink_gain_url, json = {"F64" : int(self.tx_gain[self.current_phy])})
+        requests.post(self.soapy_sink_sample_rate_url, json = {"F64" : int(self.sample_rate[self.current_phy])})
         
 
 
