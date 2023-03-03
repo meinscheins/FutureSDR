@@ -139,6 +139,12 @@ struct Args {
     /// remote UDP server to forward received messages to
     #[clap(long, value_parser)]
     remote_udp: Option<String>,
+    /// local IP to bind to
+    #[clap(long, value_parser, default_value = "10.193.0.73")]
+    metrics_ip: String,
+    /// local UDP port to receive messages to send
+    #[clap(long, value_parser, default_value = "1340")]
+    metrics_port: u32,
     /// send periodic messages for testing
     #[clap(long, value_parser)]
     tx_interval: Option<f32>,
@@ -499,6 +505,10 @@ fn main() -> Result<()> {
         let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
         let socket2 = socket.clone();
         let socket3 = socket.clone();
+        let socket_metrics = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
+        block_on(socket_metrics.connect(format!("{}:{}", args.metrics_ip, args.metrics_port))).unwrap();
+        let socket_metrics2 = socket_metrics.clone();
+        let socket_metrics3 = socket_metrics.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -523,6 +533,7 @@ fn main() -> Result<()> {
                     Pmt::Blob(buf[0..n].to_vec()))
                 .await
                 .unwrap();
+                socket_metrics.send(b"server,tx").await.unwrap();
             }
         });
 
@@ -535,6 +546,7 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received frame, size {}", v.len() - 24);
                         socket2.send_to(&v[24..], endpoint).await.unwrap();
+                        socket_metrics2.send(b"server,rx").await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -551,6 +563,7 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received Zigbee frame size {}", v.len());
                         socket3.send_to(&v, endpoint).await.unwrap();
+                        socket_metrics3.send(b"server,rx").await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -566,6 +579,10 @@ fn main() -> Result<()> {
         block_on(socket.connect(remote)).unwrap();
         let socket2 = socket.clone();
         let socket3 = socket.clone();
+        let socket_metrics = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
+        block_on(socket_metrics.connect(format!("{}:{}", args.metrics_ip, args.metrics_port))).unwrap();
+        let socket_metrics2 = socket_metrics.clone();
+        let socket_metrics3 = socket_metrics.clone();
 
         rt.spawn_background(async move {
             let mut buf = vec![0u8; 1024];
@@ -581,6 +598,7 @@ fn main() -> Result<()> {
                             )
                             .await
                             .unwrap();
+                        socket_metrics.send(b"client,tx").await.unwrap();
                     }
                     Err(e) => println!("ERROR: {:?}", e),
                 }
@@ -593,6 +611,7 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received WLAN frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
+                        socket_metrics2.send(b"client,rx").await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -608,6 +627,7 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received Zigbee frame size {}", v.len());
                         socket3.send(&v).await.unwrap();
+                        socket_metrics3.send(b"client,rx").await.unwrap();
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -783,7 +803,6 @@ fn main() -> Result<()> {
 
         // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
         block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, 1339))).unwrap();
-        println!("TEEEEST")
     }
 
 }
