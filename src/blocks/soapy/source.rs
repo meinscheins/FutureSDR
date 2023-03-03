@@ -109,6 +109,7 @@ impl SoapySource {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("RX Center Frequency {:?}", p);
         self.set_center_freq(p, &SoapyDirection::Rx)
     }
 
@@ -119,6 +120,7 @@ impl SoapySource {
         _meta: &mut BlockMeta,
         p: Pmt,
     ) -> Result<Pmt> {
+        println!("RX Frequency Offset{:?}", p);
         self.set_freq_offset(p, &SoapyDirection::Rx)
     }
 
