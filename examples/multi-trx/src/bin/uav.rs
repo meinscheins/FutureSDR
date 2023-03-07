@@ -533,7 +533,11 @@ fn main() -> Result<()> {
                     Pmt::Blob(buf[0..n].to_vec()))
                 .await
                 .unwrap();
-                socket_metrics.send(b"server,tx").await.unwrap();
+                if let Ok(res) = socket_metrics.send(b"server,tx").await {
+                    // info!("server sent a frame.")
+                } else {
+                    warn!("could not send metric update.")
+                }
             }
         });
 
@@ -546,7 +550,11 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received frame, size {}", v.len() - 24);
                         socket2.send_to(&v[24..], endpoint).await.unwrap();
-                        socket_metrics2.send(b"server,rx").await.unwrap();
+                        if let Ok(res) = socket_metrics2.send(b"server,rx").await {
+                            // info!("server received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -563,7 +571,11 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received Zigbee frame size {}", v.len());
                         socket3.send_to(&v, endpoint).await.unwrap();
-                        socket_metrics3.send(b"server,rx").await.unwrap();
+                        if let Ok(res) = socket_metrics3.send(b"server,rx").await {
+                            // info!("server received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -598,7 +610,11 @@ fn main() -> Result<()> {
                             )
                             .await
                             .unwrap();
-                        socket_metrics.send(b"client,tx").await.unwrap();
+                        if let Ok(res) = socket_metrics.send(b"client,tx").await {
+                            // info!("client sent a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
                     }
                     Err(e) => println!("ERROR: {:?}", e),
                 }
@@ -611,7 +627,11 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received WLAN frame size {}", v.len() - 24);
                         socket2.send(&v[24..]).await.unwrap();
-                        socket_metrics2.send(b"client,rx").await.unwrap();
+                        if let Ok(res) = socket_metrics2.send(b"client,rx").await {
+                            // info!("client received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
@@ -627,7 +647,11 @@ fn main() -> Result<()> {
                     if let Pmt::Blob(v) = p {
                         println!("received Zigbee frame size {}", v.len());
                         socket3.send(&v).await.unwrap();
-                        socket_metrics3.send(b"client,rx").await.unwrap();
+                        if let Ok(res) = socket_metrics3.send(b"client,rx").await {
+                            // info!("client received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
                     } else {
                         warn!("pmt to tx was not a blob");
                     }
