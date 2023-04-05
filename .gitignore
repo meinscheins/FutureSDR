@@ -4,3 +4,4 @@ target
 node_modules
 perf-data
 package-lock.json
+examples/multi-trx/src/__pycache__/

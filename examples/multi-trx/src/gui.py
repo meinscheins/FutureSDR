@@ -207,7 +207,7 @@ class MyBarFigureCanvas(FigureCanvas):
             y_range: Optional[list], y_label: Optional[str] = None, x_label: Optional[str] = None,
             y_ticks: Optional[Tuple[List[float], List[str]]] = None,
             x_tick_label: Optional[list[str]] = None, small: Optional[bool] = False,
-            y_scale: str = 'linear'
+            y_scale: str = 'linear', basey: Optional[int] = None
     ) -> None:
         """
         :param x_len:       The nr of data points shown in one plot.
@@ -475,6 +475,7 @@ class Ui(QtWidgets.QMainWindow):
 
         self.radio_button_wifi.setEnabled(False)
         self.radio_button_zigbee.setEnabled(False)
+        self.tabWidget.setEnabled(False)
         self.radio_button_wifi.toggled.connect(partial(self.change_protocol, 0))
         self.radio_button_zigbee.toggled.connect(partial(self.change_protocol, 1))
         self.radio_button_path_loss_freespace.toggled.connect(
@@ -672,17 +673,20 @@ class Ui(QtWidgets.QMainWindow):
 
     def on_data_ready_position(self, message):
         if message[0] == b'P'[0]:
+            # received position update
             [x, y, z, r_rad, p_rad, y_rad] = struct.unpack_from('!ffffff', message[1:])
             # print(f"new position update: {[x, y, z, r_rad, p_rad, y_rad]}")
             self.uav_pos = np.array((x, y, z - STATION_Z))  # TODO
             self.uav_orientation = (r_rad, p_rad, y_rad)
         elif message[0] == b'M'[0]:
+            # received PL model selection
             new_index, self.manual_path_loss_value = struct.unpack_from('!Bf', message[1:])
             new_index = int(new_index)
             # print(f"new model index: {new_index}")
             self.select_path_loss_function(True, new_index, invoked_in_gui=False)
             self.init_reference_plots()
         elif message[0] == b'T'[0]:
+            # received taps
             taps = struct.unpack_from(
                 '!hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
                 message[1:]
@@ -691,8 +695,27 @@ class Ui(QtWidgets.QMainWindow):
             # print(f"new taps: {taps}")
             self.taps = taps
             self.update_taps()
+        elif message[0] == b'E'[0]:
+            # received control event from gamepad
+            # print(f"received control event: {message}")
+            event = message[1:3]
+            self.parse_control_event(event)
         else:
             print(f"Warning: received invalid message on port 1442 {message}")
+
+    def parse_control_event(self, event: bytes):
+        if event == b'TR':  # right trigger
+            self.tabWidget_2.setCurrentIndex((self.tabWidget_2.currentIndex() + 1) % self.tabWidget_2.count())
+        elif event == b'TL':  # left trigger
+            self.tabWidget_2.setCurrentIndex((self.tabWidget_2.currentIndex() - 1) % self.tabWidget_2.count())
+        elif event == b'AS':  # green button
+            self.radio_button_wifi.setChecked(True)
+        elif event == b'AN':  # orange button
+            self.radio_button_zigbee.setChecked(True)
+        elif event == b'AW':  # blue button
+            if self.uav_endpoint_controller is None:
+                self.init_endpoint_controllers()
+                self.apply_settings()
 
     def change_protocol(self, new_index: int):
         self.uav_endpoint_controller.select_phy(new_index)
@@ -704,7 +727,8 @@ class Ui(QtWidgets.QMainWindow):
     def apply_settings(self):
         malformatted_input = False
         for line_edit in [
-            self.lineEdit_5, self.lineEdit_6, self.lineEdit_11, self.lineEdit_12
+            self.lineEdit_5, self.lineEdit_6, self.lineEdit_14, self.lineEdit_13,
+            self.lineEdit_17, self.lineEdit_18, self.lineEdit_19, self.lineEdit_20
         ]:
             if not line_edit.text().isdigit():
                 line_edit.setStyleSheet("color: red;")
@@ -727,8 +751,10 @@ class Ui(QtWidgets.QMainWindow):
             print("Invalid input. Please check the highlighted settings and try again.")
             return
         for line_edit in [
-            self.lineEdit_3, self.lineEdit_4, self.lineEdit_5, self.lineEdit_6,
-            self.lineEdit_8, self.lineEdit_9, self.lineEdit_11, self.lineEdit_12
+            self.lineEdit_3, self.lineEdit_4,
+            self.lineEdit_8, self.lineEdit_9,
+            self.lineEdit_5, self.lineEdit_6, self.lineEdit_14, self.lineEdit_13,
+            self.lineEdit_17, self.lineEdit_18, self.lineEdit_19, self.lineEdit_20
         ]:
             line_edit.setStyleSheet("color: black;")
         # WiFi settings
@@ -745,8 +771,8 @@ class Ui(QtWidgets.QMainWindow):
             sample_rate=int(float(self.lineEdit.text()) * 1_000_000)
         )
         # ZigBee settings
-        self.uav_endpoint_controller.set_rx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_12.text()))
-        self.uav_endpoint_controller.set_tx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_11.text()))
+        self.uav_endpoint_controller.set_rx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_17.text()))
+        self.uav_endpoint_controller.set_tx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_18.text()))
         self.uav_endpoint_controller.set_rx_frequency_offset_config(
             phy=PHY_ZIGBEE, offset=int(float(self.lineEdit_9.text()) * 1_000_000)
         )
@@ -759,8 +785,8 @@ class Ui(QtWidgets.QMainWindow):
         )
         self.uav_endpoint_controller.select_phy(self.uav_endpoint_controller.current_phy)
         # WiFi settings
-        self.ground_endpoint_controller.set_rx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_6.text()))
-        self.ground_endpoint_controller.set_tx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_5.text()))
+        self.ground_endpoint_controller.set_rx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_13.text()))
+        self.ground_endpoint_controller.set_tx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_14.text()))
         self.ground_endpoint_controller.set_rx_frequency_offset_config(
             phy=PHY_WIFI, offset=-int(float(self.lineEdit_4.text()) * 1_000_000)
         )
@@ -772,8 +798,8 @@ class Ui(QtWidgets.QMainWindow):
             sample_rate=int(float(self.lineEdit.text()) * 1_000_000)
         )
         # ZigBee settings
-        self.ground_endpoint_controller.set_rx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_12.text()))
-        self.ground_endpoint_controller.set_tx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_11.text()))
+        self.ground_endpoint_controller.set_rx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_19.text()))
+        self.ground_endpoint_controller.set_tx_gain_config(phy=PHY_ZIGBEE, gain=int(self.lineEdit_20.text()))
         self.ground_endpoint_controller.set_rx_frequency_offset_config(
             phy=PHY_ZIGBEE, offset=-int(float(self.lineEdit_9.text()) * 1_000_000)
         )
@@ -789,13 +815,17 @@ class Ui(QtWidgets.QMainWindow):
     def restore_settings(self):
         self.lineEdit.setText("4")
         self.lineEdit_6.setText("60")
-        self.lineEdit_5.setText("40")
+        self.lineEdit_5.setText("60")
+        self.lineEdit_13.setText("60")
+        self.lineEdit_14.setText("70")
         self.lineEdit_4.setText("4")
         self.lineEdit_3.setText("-4")
         self.lineEdit_2.setText("2.45")
         self.lineEdit_10.setText("4")
-        self.lineEdit_12.setText("60")
-        self.lineEdit_11.setText("40")
+        self.lineEdit_17.setText("60")
+        self.lineEdit_18.setText("60")
+        self.lineEdit_19.setText("60")
+        self.lineEdit_20.setText("70")
         self.lineEdit_9.setText("4")
         self.lineEdit_8.setText("-4")
         self.lineEdit_7.setText("2.45")

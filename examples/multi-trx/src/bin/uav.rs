@@ -526,6 +526,7 @@ fn main() -> Result<()> {
 
             loop {
                 let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                print!("s");
                 handle
                 .call(
                     message_selector, 
@@ -548,7 +549,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = wlan_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received frame, size {}", v.len() - 24);
+                        // info!("received frame, size {}", v.len() - 24);
+                        print!("r");
                         socket2.send_to(&v[24..], endpoint).await.unwrap();
                         if let Ok(res) = socket_metrics2.send(b"server,rx").await {
                             // info!("server received a frame.")
@@ -569,7 +571,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = zigbee_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received Zigbee frame size {}", v.len());
+                        // info!("received Zigbee frame size {}", v.len());
+                        print!("r");
                         socket3.send_to(&v, endpoint).await.unwrap();
                         if let Ok(res) = socket_metrics3.send(b"server,rx").await {
                             // info!("server received a frame.")
@@ -601,7 +604,8 @@ fn main() -> Result<()> {
             loop {
                 match socket.recv_from(&mut buf).await {
                     Ok((n, s)) => {
-                        println!("sending frame size {} from {:?}", n, s);
+                        // info!("sending frame size {} from {:?}", n, s);
+                        print!("s");
                         handle
                             .call(
                                 message_selector,
@@ -625,7 +629,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = wlan_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received WLAN frame size {}", v.len() - 24);
+                        // info!("received WLAN frame size {}", v.len() - 24);
+                        print!("r");
                         socket2.send(&v[24..]).await.unwrap();
                         if let Ok(res) = socket_metrics2.send(b"client,rx").await {
                             // info!("client received a frame.")
@@ -645,7 +650,8 @@ fn main() -> Result<()> {
             loop {
                 if let Some(p) = zigbee_rxed_frames.next().await {
                     if let Pmt::Blob(v) = p {
-                        println!("received Zigbee frame size {}", v.len());
+                        // info!("received Zigbee frame size {}", v.len());
+                        info!("r");
                         socket3.send(&v).await.unwrap();
                         if let Ok(res) = socket_metrics3.send(b"client,rx").await {
                             // info!("client received a frame.")
