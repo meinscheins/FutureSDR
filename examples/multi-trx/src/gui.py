@@ -1,3 +1,4 @@
+import warnings
 from typing import Tuple, List, Dict, Optional
 
 import requests.exceptions
@@ -16,6 +17,10 @@ import cmath
 import signal
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+warnings.filterwarnings(
+    "ignore", category=UserWarning, message="All values for SymLogScale are below linthresh.*"
+)
 
 # worker.py
 from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
@@ -74,7 +79,7 @@ averages rate over the last x intervals for smoother plotting
 SPEED_OF_LIGHT: float = 299_792_458.
 LAMBDA: float = SPEED_OF_LIGHT / 2.45e9
 EPSILON_R: float = 1.02
-DELAY_PER_TAP = (41 - 1) / (2.0 * 20e6)  # seconds
+DELAY_PER_TAP_NS = 5  # 1 / 200e6 seconds
 
 STATION_X: float = 0.0
 STATION_Y: float = 0.0
@@ -207,7 +212,7 @@ class MyBarFigureCanvas(FigureCanvas):
             y_range: Optional[list], y_label: Optional[str] = None, x_label: Optional[str] = None,
             y_ticks: Optional[Tuple[List[float], List[str]]] = None,
             x_tick_label: Optional[list[str]] = None, small: Optional[bool] = False,
-            y_scale: str = 'linear', basey: Optional[int] = None
+            y_scale: str = 'linear', base: Optional[int] = None, linthresh: Optional[float] = None
     ) -> None:
         """
         :param x_len:       The nr of data points shown in one plot.
@@ -239,12 +244,14 @@ class MyBarFigureCanvas(FigureCanvas):
         self.bottom = [0, ] * x_len
         if y_ticks is not None:
             self._ax_.set_yticks(y_ticks[0], y_ticks[1])
-        self._ax_.set_yscale(y_scale)
+        if y_scale == "symlog":
+            self._ax_.set_yscale("symlog", base=base, linthresh=linthresh)
+        else:
+            self._ax_.set_yscale(y_scale)
 
         # Store two lists _x_ and _y_
         self._x_ = list(range(x_len))
         self.bar_lengths = [-b for b in self.bottom]
-
         self.line = self._ax_.axhline(y=0, color="black")
         self.bars = self._ax_.bar(
             x=self._x_,
@@ -412,18 +419,18 @@ class Ui(QtWidgets.QMainWindow):
         self.plot_taps_amplitude = MyBarFigureCanvas(
             x_len=41, y_range=[-1, 1], interval=PLOTTING_INTERVAL_MS,
             data_getter_callback=lambda: self.get_datapoint_taps_for_plotting()[0],
-            y_label="Real Response", x_label="Time (μs)",
-            x_tick_label=[str(round((x * DELAY_PER_TAP * 1_000_000), 2)) if x % 10 == 0 else None for x in range(41)],
-            y_scale='symlog'
+            y_label="Real Response", x_label="Time (ns)",
+            x_tick_label=[str(round((x * DELAY_PER_TAP_NS), 2)) if x % 10 == 0 else None for x in range(41)],
+            y_scale='symlog', base=10, linthresh=1/2**15
         )
         self.canvas_taps_amplitude.addWidget(self.plot_taps_amplitude)
         self.plot_taps_phase = MyBarFigureCanvas(
             x_len=41, y_range=[-1, 1], interval=PLOTTING_INTERVAL_MS,
             data_getter_callback=lambda: self.get_datapoint_taps_for_plotting()[1],
             # y_ticks=([0, 0.5 * np.pi, np.pi, 1.5 * np.pi, 2 * np.pi], ["", "π/2", "π", "3π/2", "2π"]),
-            y_label="Imaginary Response", x_label="Time (μs)",
-            x_tick_label=[str(round((x * DELAY_PER_TAP * 1_000_000), 2)) if x % 10 == 0 else None for x in range(41)],
-            y_scale='symlog'
+            y_label="Imaginary Response", x_label="Time (ns)",
+            x_tick_label=[str(round((x * DELAY_PER_TAP_NS), 2)) if x % 10 == 0 else None for x in range(41)],
+            y_scale='symlog', base=10, linthresh=1/2**15
         )
         self.canvas_taps_phase.addWidget(self.plot_taps_phase)
 
@@ -522,6 +529,7 @@ class Ui(QtWidgets.QMainWindow):
             self.groupBox_3.setEnabled(True)
             self.radio_button_wifi.setEnabled(True)
             self.radio_button_zigbee.setEnabled(True)
+            self.apply_settings(dryrun=True)
         except requests.exceptions.ConnectionError as e:
             print(e)
 
@@ -652,7 +660,7 @@ class Ui(QtWidgets.QMainWindow):
 
     def get_datapoint_taps_for_plotting(self):
         taps_complex = [real + 1j * imag for real, imag in zip(self.taps[:41], self.taps[41:])]
-        taps_complex = [x / 10000 for x in taps_complex]
+        taps_complex = [x / 2**15 for x in taps_complex]
         # taps_amplitude = [abs(x) / 1.4 for x in taps_complex]
         # taps_amplitude = [round(x * 4, 4) for x in taps_amplitude]
         # taps_phase = [cmath.phase(x) for x in taps_complex]
@@ -724,7 +732,7 @@ class Ui(QtWidgets.QMainWindow):
     def update_taps(self):
         pass
 
-    def apply_settings(self):
+    def apply_settings(self, dryrun: bool = False):
         malformatted_input = False
         for line_edit in [
             self.lineEdit_5, self.lineEdit_6, self.lineEdit_14, self.lineEdit_13,
@@ -783,7 +791,8 @@ class Ui(QtWidgets.QMainWindow):
             phy=PHY_ZIGBEE,
             sample_rate=int(float(self.lineEdit_10.text()) * 1_000_000)
         )
-        self.uav_endpoint_controller.select_phy(self.uav_endpoint_controller.current_phy)
+        if not dryrun:
+            self.uav_endpoint_controller.select_phy(self.uav_endpoint_controller.current_phy)
         # WiFi settings
         self.ground_endpoint_controller.set_rx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_13.text()))
         self.ground_endpoint_controller.set_tx_gain_config(phy=PHY_WIFI, gain=int(self.lineEdit_14.text()))
@@ -810,7 +819,8 @@ class Ui(QtWidgets.QMainWindow):
             phy=PHY_ZIGBEE,
             sample_rate=int(float(self.lineEdit_10.text()) * 1_000_000)
         )
-        self.ground_endpoint_controller.select_phy(self.ground_endpoint_controller.current_phy)
+        if not dryrun:
+            self.ground_endpoint_controller.select_phy(self.ground_endpoint_controller.current_phy)
 
     def restore_settings(self):
         self.lineEdit.setText("4")
