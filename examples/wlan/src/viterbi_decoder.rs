@@ -501,28 +501,25 @@ impl ViterbiDecoder {
         let mut n_decoded = 0;
 
         while n_decoded < self.frame_param.n_data_bits() {
-            if (in_count % 4) == 0 {
-                let index = in_count & !0b11;
-                self.viterbi_butterfly2_generic(
-                    &self.depunctured[index..index + 4].try_into().unwrap(),
-                );
+            self.viterbi_butterfly2_generic(
+                &self.depunctured[in_count..in_count + 4].try_into().unwrap(),
+            );
 
-                if (in_count > 0) && (in_count % 16) == 8 {
-                    // 8 or 11
-                    let c = self.viterbi_get_output_generic();
-                    // info!("c: {}", c);
+            if (in_count > 0) && (in_count % 16) == 8 {
+                // 8 or 11
+                let c = self.viterbi_get_output_generic();
+                // info!("c: {}", c);
 
-                    if out_count >= self.n_traceback {
-                        // info!("c used: {}", c);
-                        for i in 0..8 {
-                            out_bits[(out_count - self.n_traceback) * 8 + i] = (c >> (7 - i)) & 0x1;
-                            n_decoded += 1;
-                        }
+                if out_count >= self.n_traceback {
+                    // info!("c used: {}", c);
+                    for i in 0..8 {
+                        out_bits[(out_count - self.n_traceback) * 8 + i] = (c >> (7 - i)) & 0x1;
+                        n_decoded += 1;
                     }
-                    out_count += 1;
                 }
+                out_count += 1;
             }
-            in_count += 1;
+            in_count += 4;
         }
         // info!("decoded bits {}", n_decoded);
     }

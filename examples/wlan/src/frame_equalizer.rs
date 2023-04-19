@@ -1,4 +1,4 @@
-use crate::FrameParam;
+use crate::{FrameParam, MAX_PAYLOAD_SIZE};
 use crate::Mcs;
 use crate::Modulation;
 use crate::ViterbiDecoder;
@@ -154,6 +154,11 @@ impl FrameEqualizer {
         }
 
         if parity as u8 != decoded_bits[17] {
+            return None;
+        }
+
+        if bytes > MAX_PAYLOAD_SIZE {
+            warn!("frame too large bytes {}", bytes);
             return None;
         }
 
