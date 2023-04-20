@@ -1,3 +1,5 @@
+use futuresdr::log::warn;
+
 use crate::{FrameParam, MAX_PAYLOAD_SIZE};
 use crate::Mcs;
 use crate::Modulation;
