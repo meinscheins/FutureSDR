@@ -145,6 +145,9 @@ struct Args {
     /// local UDP port to receive messages to send
     #[clap(long, value_parser, default_value = "1340")]
     metrics_port: u32,
+    /// local UDP port to receive messages to send
+    #[clap(long, value_parser, default_value = "1341")]
+    protocol_switching_ctrl_port: u32,
     /// send periodic messages for testing
     #[clap(long, value_parser)]
     tx_interval: Option<f32>,
@@ -687,8 +690,8 @@ fn main() -> Result<()> {
     }
 
     // protocol switching message handler:
-    info!("listening for protocol switch on port 1339.");
-    let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 1339))).unwrap();
+    info!("listening for protocol switch on port {}.", args.protocol_switching_ctrl_port);
+    let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, args.protocol_switching_ctrl_port))).unwrap();
 
     rt.spawn_background(async move {
         let mut buf = vec![0u8; 1024];
@@ -833,7 +836,7 @@ fn main() -> Result<()> {
         input.retain(|c| !c.is_whitespace());
 
         // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
-        block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, 1339))).unwrap();
+        block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, args.protocol_switching_ctrl_port))).unwrap();
     }
 
 }

@@ -50,8 +50,8 @@ class UDPReceiverWorker(QObject):
 
 
 SDR_ENDPOINTS = (
-    ("10.193.0.73", 1339),
-    ("10.193.0.75", 1339)
+    ("10.193.0.73", 1344),  # uav endpoint
+    ("10.193.0.73", 1345)  # ground station endpoint
 )
 
 PHY_WIFI = 0
@@ -124,6 +124,8 @@ class MyFigureCanvas(FigureCanvas):
             # self._ax_.set_xlabel("Time")
             if y_label is not None:
                 self._ax_.set_ylabel(y_label)
+        else:
+            self._ax_.set_xticks([0, 9, 19, 29, 39, 49, 59], ["-60", "-50", "-40", "-30", "-20", "-10", "0"])
         if y_range is not None:
             y_range_size = self._y_range_[1] - self._y_range_[0]
             self._ax_.set_ylim(
@@ -513,7 +515,7 @@ class Ui(QtWidgets.QMainWindow):
                 tx_device_channel=0,
             )
             self.ground_endpoint_controller = PhyController(
-                url="http://10.193.0.75:1337/api/fg/0/",
+                url="http://10.193.0.75:1336/api/fg/0/",
                 center_freq=int(2.45e9), rx_freq_offset=(-4_000_000, -4_000_000),
                 tx_freq_offset=(-4_000_000, -4_000_000),
                 rx_gain=(60, 60), tx_gain=(40, 40),
@@ -657,6 +659,31 @@ class Ui(QtWidgets.QMainWindow):
 
     def get_datapoint_pl_fe2r(self):
         return self.path_loss_fe_2r(self.uav_pos[0], self.uav_pos[1], self.uav_pos[2])
+
+    def path_loss_ce2r(self, x, y, z, r_rad, p_rad, y_rad):
+        d_xy = self.distance(x, y, 0)
+        d_los = self.distance(x, y, z)
+        if d_los == 0:
+            return 0
+        d_nlos = self.distance(x, y, z + STATION_Z)
+
+        gain_los = 4. * np.pi * (d_los / LAMBDA)  # TODO
+
+        gamma = np.sqrt(EPSILON_R - cos_theta ** 2)
+        gamma = (sin_theta - gamma) / (sin_theta + gamma)
+        phi = 2. * np.pi * ((d_ref - d_los) / LAMBDA)
+        i_phi = complex(0, 1) * phi
+        e_raised_i_phi = cmath.exp(i_phi)
+        interference = (1 / abs((1. + gamma * e_raised_i_phi)))
+        if interference == np.inf:
+            return 0
+        # print(interference)  # TODO
+        pl = 20. * np.log10(4. * np.pi * (d_los / LAMBDA) * interference)
+        return -pl
+
+    def path_loss_two_segment_log_dist(self, x, y, z, r_rad, p_rad, y_rad):
+
+        return 0
 
     def get_datapoint_taps_for_plotting(self):
         taps_complex = [real + 1j * imag for real, imag in zip(self.taps[:41], self.taps[41:])]
