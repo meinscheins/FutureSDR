@@ -515,7 +515,7 @@ class Ui(QtWidgets.QMainWindow):
                 tx_device_channel=0,
             )
             self.ground_endpoint_controller = PhyController(
-                url="http://10.193.0.75:1336/api/fg/0/",
+                url="http://10.193.0.73:1336/api/fg/0/",
                 center_freq=int(2.45e9), rx_freq_offset=(-4_000_000, -4_000_000),
                 tx_freq_offset=(-4_000_000, -4_000_000),
                 rx_gain=(60, 60), tx_gain=(40, 40),
