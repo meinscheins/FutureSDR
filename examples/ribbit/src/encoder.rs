@@ -1,9 +1,11 @@
 use futuresdr::num_complex::Complex32;
+use rustfft::num_complex::Complex;
+use rustfft::num_traits::clamp;
 use rustfft::{self,Fft,FftPlanner};
 use std::cmp::max;
 use std::sync::Arc;
 use std::vec::Vec;
-use crate::MLS;
+use crate::{MLS, bin, nrz};
 
 pub struct Encoder {
     rate: isize,
@@ -148,5 +150,44 @@ impl Encoder{
             }
         }
     
+    }
+
+    pub fn next_sample(&mut self, samples: &mut Vec<i16>, signal: Complex32, channel: isize, i: usize) {
+        match channel {
+            1 => {
+                samples[2 * i] = clamp((32767.0 * signal.re).round() as i16, -32768, 32767);
+				samples[2 * i + 1] = 0; 
+            }
+            2 => {
+                samples[2 * i] = 0;
+				samples[2 * i + 1] = clamp((32767.0 * signal.re).round() as i16, -32768, 32767); 
+            }
+            4 => {
+                samples[2 * i] = clamp((32767.0 * signal.re).round() as i16, -32768, 32767);
+				samples[2 * i + 1] = clamp((32767.0 * signal.im).round() as i16, -32768, 32767); 
+            }
+            _ => samples[i] = clamp((32767.0 * signal.re).round() as i16, -32768, 32767),
+        }
+    }
+    
+    pub fn schmidl_cox(&mut self) -> Vec<Complex32> {
+        let mut seq: MLS = MLS::new(self.cor_seq_poly, 1);
+        let factor: f32 = (2.0 * self.symbol_length as f32 / self.cor_seq_len as f32).sqrt();
+        let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
+        freq[bin(self.cor_seq_off - 2, self.carrier_offset, self.symbol_length) as usize] = Complex32::new(factor, 0.0);
+        for i in 0..self.cor_seq_len {
+            freq[bin(2 * i + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize] = Complex32::new(nrz(seq.mls()) as f32, 0.0);
+        }
+        for i in 0..self.cor_seq_len {
+            let temp = freq[bin(2 * (i - 1) + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize];
+            freq[bin(2 * i + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize] *= temp;
+        }
+        let mut out: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
+        self.transform(&mut freq, &mut out, false);
+        return out;
+    }
+
+    pub fn preamble(&mut self) {
+
     }
 }
