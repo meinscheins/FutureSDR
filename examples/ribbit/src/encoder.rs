@@ -1,7 +1,9 @@
 use futuresdr::num_complex::Complex32;
 use rustfft::{self,Fft,FftPlanner};
+use std::cmp::max;
 use std::sync::Arc;
 use std::vec::Vec;
+use crate::MLS;
 
 pub struct Encoder {
     rate: isize,
@@ -23,25 +25,21 @@ pub struct Encoder {
 	pay_car_off: isize,
 	fancy_off: isize,
 	noise_poly: isize,
-    ifft: Arc<dyn Fft<Complex32>>,
-    fft: Arc<dyn Fft<Complex32>>,
-    ifft_papr: Arc<dyn Fft<Complex32>>,
-    fft_papr: Arc<dyn Fft<Complex32>>,
-
-
+    ifft: Arc<dyn Fft<f32>>,
+    fft: Arc<dyn Fft<f32>>,
+    ifft_papr: Arc<dyn Fft<f32>>,
+    fft_papr: Arc<dyn Fft<f32>>,
     //CODE::CRC<uint16_t> crc;
 	//CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bch;
-	//CODE::MLS noise_seq;
+	noise_seq: MLS,
 	//PolarEncoder<code_type> polar;
-
     freq: Vec<Complex32>,
     guard: Vec<Complex32>,
     temp: Vec<Complex32>,
-    prev: [Complex32; 256],
-    mesg: [u8; 1360/8],
-    call: [u8; 9],
-    //code_len = 1 << code_order = 1 << 11
-    code: [i8; 1 << 11],
+    prev: Vec<Complex32>,
+    mesg: Vec<u8>,
+    call: Vec<u8>,
+    code: Vec<i8>,
     meta_data: u64, 
     operation_mode: isize,
 	carrier_offset: isize,
@@ -53,28 +51,102 @@ pub struct Encoder {
 
 impl Encoder{
 
-    //pub fn new(&mut self, rate:isize)
-    pub fn transform<const FREQ_LEN: usize, const RET_LEN: usize>(&mut self, freq: [Complex32; FREQ_LEN], rate: usize, papr_reduction: bool) -> [Complex32; RET_LEN] {
-        if papr_reduction && (rate <= 16000) {
-            
+    pub fn new(&mut self, rate: isize, noise_poly: isize, crc: u32, bch: Vec<isize>) -> Encoder {
+        let mut planner = FftPlanner::<f32>::new();
+        let mut factor: isize = 4;
+        if rate <= 16000 {
+            factor = 1; 
         }
-    
+        Encoder { rate: rate, 
+            code_order: 11, 
+            mod_bits: 2, 
+            code_len: 1 << self.code_order, 
+            symbol_count: 4, 
+            symbol_length: (1280 * rate) / 8000, 
+            guard_length: self.symbol_length / 8, 
+            extended_length: self.symbol_length + self.guard_length, 
+            max_bits: 1360, 
+            cor_seq_len: 127, 
+            cor_seq_off: 1 - self.cor_seq_len, 
+            cor_seq_poly: 0b10001001, 
+            pre_seq_len: 255, 
+            pre_seq_off: - self.pre_seq_len / 2, 
+            pre_seq_poly: 0b100101011, 
+            pay_car_cnt: 256, 
+            pay_car_off: - self.pay_car_cnt / 2, 
+            fancy_off: - (8 * 9 * 3) / 2, 
+            noise_poly: 0b100101010001, 
+            ifft: planner.plan_fft_inverse(self.symbol_length as usize), 
+            fft: planner.plan_fft_forward(self.symbol_length as usize), 
+            ifft_papr: planner.plan_fft_inverse(self.symbol_length as usize * factor as usize), 
+            fft_papr: planner.plan_fft_forward(self.symbol_length as usize * factor as usize),
+            //CODE::CRC<uint16_t> crc;
+	        //CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bch; 
+            noise_seq: MLS::new(0b100000000000000001001, 1), 
+            //PolarEncoder<code_type> polar;
+            freq: vec![Complex32::new(0.0, 0.0); self.symbol_length as usize], 
+            guard: vec![Complex32::new(0.0, 0.0); self.guard_length as usize], 
+            temp: vec![Complex32::new(0.0, 0.0); self.extended_length as usize], 
+            prev: vec![Complex32::new(0.0, 0.0); self.pay_car_cnt as usize], 
+            mesg: vec![0; (self.max_bits/8) as usize], 
+            call: vec![0; 9], 
+            code: vec![0; self.code_len as usize], 
+            meta_data: 0, 
+            operation_mode: 0, 
+            carrier_offset: 0, 
+            symbol_number: self.symbol_count, 
+            count_down: 0, 
+            fancy_line: 0, 
+            noise_count: 0 
+        }
     }
-    
-    pub fn improve_papr(&mut self, freq: &Vec<Complex32>, fact: usize) {
-        let mut over: Vec<Complex32> = vec!(Complex32::new(0.0, 0.0); freq.len()*fact);
-        let mut used: Vec<bool> = vec!(false; freq.len()) ;
-    
-        for i in 0..freq.len() {
-            used[i] = (freq[i].re != 0.0) || (freq[i].im != 0.0);
+    pub fn transform(&mut self, input: &mut Vec<Complex32>, output: &mut Vec<Complex32>, papr_reduction: bool) {
+        if papr_reduction && self.rate <= 16000 {
+            self.improve_papr(input, 4)
         }
-        for i in 0..(freq.len()/2) {
-            over[i] = freq[i];
-        }
-        for i in (freq.len()/2)..freq.len() {
-            over[freq.len() * (fact - 1) + i] = freq[i];
+        self.ifft.process(input);
+        for i in 0..input.len() {
+            output[i] = input[i] / ((self.symbol_length * 8) as f32).sqrt();
         }
 
+    }
+    
+    pub fn improve_papr(&mut self, freq: &mut Vec<Complex32>, fact: usize) {
+        let size = freq.len();
+        let mut over: Vec<Complex32> = vec!(Complex32::new(0.0, 0.0); size*fact);
+        let mut used: Vec<bool> = vec!(false; size) ;
+    
+        for i in 0..size {
+            used[i] = (freq[i].re != 0.0) || (freq[i].im != 0.0);
+        }
+        for i in 0..size/2 {
+            over[i] = freq[i];
+        }
+        for i in (size/2)..size {
+            over[freq.len() * (fact - 1) + i] = freq[i];
+        }
+        self.ifft_papr.process(&mut over);
+        let factor = Complex32::new(1.0 / ((fact*size) as f32).sqrt(), 0.0);
+        for i in 0..over.len() {
+            over[i] *= factor;
+        }
+        for i in 0..over.len() {
+            let amp = (over[i].re).abs().max((over[i].im).abs());
+            if amp > 1.0 {
+                over[i] /= amp;
+            }
+        }
+        self.fft_papr.process(&mut over);
+        for i in 0..size/2 {
+            if used[i] {
+                freq[i] = factor * over[i];
+            }
+        }
+        for i in size/2..size {
+            if used[i] {
+                freq[i] = factor * over[size * (fact - 1) + i];
+            }
+        }
     
     }
 }
