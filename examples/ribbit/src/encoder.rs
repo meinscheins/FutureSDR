@@ -190,4 +190,17 @@ impl Encoder{
     pub fn preamble(&mut self) {
 
     }
+
+    pub fn noise_symbol(&mut self) {
+
+    }
+
+    pub fn payload_symbol(&mut self) {
+
+    }
+
+    pub fn silence(&mut self) -> Vec<Complex32> {
+        return vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
+    }
+
 }

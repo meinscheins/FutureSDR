@@ -6,6 +6,8 @@ use futuresdr::num_complex::Complex32;
 use futuresdr::runtime::StreamInput;
 use futuresdr::runtime::StreamOutput;
 
+mod bch;
+pub use bch::BCH;
 
 mod encoder;
 pub use encoder::Encoder;
@@ -48,6 +50,45 @@ pub fn bin(carrier: isize, carrier_offset: isize, symbol_length: isize) -> isize
     return (carrier + carrier_offset + symbol_length) % symbol_length;
 }
 
+pub fn xor_be_bit(buf: &mut Vec<u8>, pos: usize, value: u8) {
+    let mut val = 0;
+    if value != 0 {
+        val = 1;
+    }
+    buf[pos/8] ^= val<<(7-pos%8);
+} 
+
+pub fn xor_le_bit(buf: &mut Vec<u8>, pos: usize, value: u8) {
+    let mut val = 0;
+    if value != 0 {
+        val = 1;
+    }
+    buf[pos/8] ^= val<<(pos%8)
+}
+
+pub fn set_be_bit(buf: &mut Vec<u8>, pos: usize, value: u8) {
+    let mut val = 0;
+    if value != 0 {
+        val = 1;
+    }
+    buf[pos/8] = (!(1<<(7-pos%8))&buf[pos/8])|(val<<(7-pos%8));
+}
+
+pub fn set_le_bit(buf: &mut Vec<u8>, pos: usize, value: u8) {
+    let mut val = 0;
+    if value != 0 {
+        val = 1;
+    }
+    buf[pos/8] = (!(1<<(pos%8))&buf[pos/8])|(val<<(pos%8));
+}
+
+pub fn get_be_bit(buf: &mut Vec<u8>, pos: usize) -> u8 {
+    return (buf[pos/8]>>(7-pos%8))&1;
+}
+
+pub fn get_le_bit(buf: &mut Vec<u8>, pos: usize) -> u8 {
+    return (buf[pos/8]>>(pos%8))&1;
+}
 
 
 #[derive(Clone, Copy, Debug)]
