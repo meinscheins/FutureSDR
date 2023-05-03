@@ -9,6 +9,9 @@ use futuresdr::runtime::StreamOutput;
 mod bch;
 pub use bch::BCH;
 
+mod crc16;
+pub use crc16::CRC16;
+
 mod encoder;
 pub use encoder::Encoder;
 
