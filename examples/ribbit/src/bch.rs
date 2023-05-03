@@ -1,4 +1,4 @@
-use crate::{self, set_be_bit, get_be_bit, xor_be_bit};
+use crate::{set_be_bit, get_be_bit, xor_be_bit};
 
 pub struct BCH {
     n: usize,
@@ -8,7 +8,7 @@ pub struct BCH {
     generator: Vec<u8>
 }
 
-fn slb1(buf: &mut Vec<u8>, pos: usize) -> u8 {
+pub fn slb1(buf: &mut Vec<u8>, pos: usize) -> u8 {
     return (buf[pos]<<1) | (buf[pos+1]>>7);
 }
 
@@ -54,22 +54,20 @@ impl BCH {
     }
 
     pub fn bch(&mut self, data: &mut Vec<u8>, parity: &mut Vec<u8>){
-        for i in 0..self.np {
+        for i in 0..(self.np-1)/8 {
             parity[i] = 0;
         }
         for i in 0..data.len() {
-            if data[i] != parity[0] {
-                for j in 1..self.np {
-                    let parity_i = parity[i];
-                    parity[j-1] = self.generator[self.np -j] + parity_i;
-                    parity[self.np-1] = self.generator[0];
+            if get_be_bit(data, i) != get_be_bit(parity, 0) {
+                for j in 0..(self.np-1)/8 {
+                    parity[j] = self.generator[j] ^ slb1(parity, j);
                 } 
+                parity[(self.np-1)/8] = self.generator[(self.np-1)/8] ^ (parity[(self.np-1)/8]<<1);
             } else {
-                for j in 1..self.np {
-                    let parity_j = parity[j];
-                    parity[j-1] = parity_j;
-                    parity[self.np-1] = 0;
+                for j in 0..(self.np-1)/8 {
+                    parity[j] = slb1(parity, j);
                 }
+                parity[(self.np-1)/8] <<= 1;
             }
         }
     }
