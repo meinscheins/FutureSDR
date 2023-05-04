@@ -5,7 +5,7 @@ use rustfft::{self,Fft,FftPlanner};
 use std::cmp::max;
 use std::sync::Arc;
 use std::vec::Vec;
-use crate::{MLS, bin, nrz};
+use crate::{MLS, bin, nrz, set_be_bit, CRC16, BCH, get_be_bit};
 
 pub struct Encoder {
     rate: isize,
@@ -31,8 +31,8 @@ pub struct Encoder {
     fft: Arc<dyn Fft<f32>>,
     ifft_papr: Arc<dyn Fft<f32>>,
     fft_papr: Arc<dyn Fft<f32>>,
-    //CODE::CRC<uint16_t> crc;
-	//CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bch;
+    crc: CRC16,
+	bch: BCH,
 	noise_seq: MLS,
 	//PolarEncoder<code_type> polar;
     freq: Vec<Complex32>,
@@ -53,7 +53,7 @@ pub struct Encoder {
 
 impl Encoder{
 
-    pub fn new(&mut self, rate: isize, noise_poly: isize, crc: u32, bch: Vec<isize>) -> Encoder {
+    pub fn new(&mut self, rate: isize, noise_poly: isize, crc: u16, bch_minimal_polynomials: Vec<usize>) -> Encoder {
         let mut planner = FftPlanner::<f32>::new();
         let mut factor: isize = 4;
         if rate <= 16000 {
@@ -82,8 +82,8 @@ impl Encoder{
             fft: planner.plan_fft_forward(self.symbol_length as usize), 
             ifft_papr: planner.plan_fft_inverse(self.symbol_length as usize * factor as usize), 
             fft_papr: planner.plan_fft_forward(self.symbol_length as usize * factor as usize),
-            //CODE::CRC<uint16_t> crc;
-	        //CODE::BoseChaudhuriHocquenghemEncoder<255, 71> bch; 
+            crc: CRC16::new(crc, 0),
+	        bch: BCH::new(255, 71, bch_minimal_polynomials),
             noise_seq: MLS::new(0b100000000000000001001, 1), 
             //PolarEncoder<code_type> polar;
             freq: vec![Complex32::new(0.0, 0.0); self.symbol_length as usize], 
@@ -176,7 +176,7 @@ impl Encoder{
         let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
         freq[bin(self.cor_seq_off - 2, self.carrier_offset, self.symbol_length) as usize] = Complex32::new(factor, 0.0);
         for i in 0..self.cor_seq_len {
-            freq[bin(2 * i + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize] = Complex32::new(nrz(seq.mls()) as f32, 0.0);
+            freq[bin(2 * i + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize] = Complex32::new(nrz(seq.mls() as u8) as f32, 0.0);
         }
         for i in 0..self.cor_seq_len {
             let temp = freq[bin(2 * (i - 1) + self.cor_seq_off, self.carrier_offset, self.symbol_length)as usize];
@@ -187,8 +187,46 @@ impl Encoder{
         return out;
     }
 
-    pub fn preamble(&mut self) {
-
+    pub fn preamble(&mut self) -> Vec<Complex32>  { 
+        let mut data: Vec<u8> = vec![0; 9];
+        let mut parity: Vec<u8> = vec![0; 23];
+        let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
+        let mut out: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
+        for i in 0..55 {
+            set_be_bit(&mut data, i, (self.meta_data >> i) as u8 & 1);
+        }
+        self.crc.reset();
+        let mut cs: u16 = self.crc.crc_u64(self.meta_data << 9);
+        for i in 0..16 {
+            set_be_bit(&mut data, i + 55, (cs >> i) as u8 & 1);
+        }
+        self.bch.bch(&mut data, &mut parity);
+        let mut seq: MLS = MLS::new(self.pre_seq_poly, 1);
+        let factor: f32 = (self.symbol_length as f32 / self.pre_seq_len as f32).sqrt();
+        freq[bin(self.pre_seq_off - 1, self.carrier_offset, self.symbol_length) as usize] 
+            = Complex32::new(factor, 0.0);
+        for i in 0..71 {
+            freq[bin(i + self.pre_seq_off, self.carrier_offset, self.symbol_length) as usize]
+                = Complex32::new(nrz(get_be_bit(& mut data, i as usize)) as f32, 0.0);
+        }
+        for i in 71..self.pre_seq_len {
+            freq[bin(i + self.pre_seq_off, self.carrier_offset, self.symbol_length) as usize]
+                = Complex32::new(nrz(get_be_bit(& mut parity, (i - 71) as usize)) as f32, 0.0);
+        }
+        for i in 0..self.pre_seq_len {
+            let tmp = freq[bin(i -1 + self.pre_seq_off, self.carrier_offset, self.symbol_length) as usize];
+            freq[bin(i + self.pre_seq_off, self.carrier_offset, self.symbol_length) as usize]
+                *= tmp;
+        }
+        for i in 0..self.pre_seq_len {
+            freq[bin(i + self.pre_seq_off, self.carrier_offset, self.symbol_length) as usize]
+                *= nrz(seq.mls() as u8) as f32;
+        }
+        for i in 0..self.pay_car_cnt {
+            self.prev[i as usize] = freq[bin(i + self.pay_car_off, self.carrier_offset, self.symbol_length) as usize];
+        }
+        self.transform(&mut freq, &mut out, true);
+        return out;
     }
 
     pub fn noise_symbol(&mut self) {

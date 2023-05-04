@@ -13,7 +13,7 @@ pub fn slb1(buf: &mut Vec<u8>, pos: usize) -> u8 {
 }
 
 impl BCH {
-    pub fn new(&mut self, len: usize, msg: usize, minimal_polynomials: Vec<usize>) -> BCH{
+    pub fn new(len: usize, msg: usize, minimal_polynomials: Vec<usize>) -> BCH{
         let n = len;
         let k = msg;
         let np = n-k;

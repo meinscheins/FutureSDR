@@ -42,10 +42,11 @@ pub fn base37(str: String) -> u64 {
     return acc
 }
 
-pub fn nrz(bit: bool) -> isize {
-    match bit {
-        true => -1,
-        false => 1 ,
+pub fn nrz(bit: u8) -> isize {
+    if bit == 0 {
+        return 1;
+    } else {
+        return -1;
     }
 }
 

@@ -16,7 +16,7 @@ impl CRC16 {
         return (prev >> 1) ^ ((tmp & 1) * self.poly);
     }
     
-    pub fn new(&mut self, poly: u16, crc: u16) -> CRC16 {
+    pub fn new(poly: u16, crc: u16) -> CRC16 {
         let mut ret: CRC16 = CRC16 { lut: [0; 256], 
             poly: poly, 
             crc: crc
