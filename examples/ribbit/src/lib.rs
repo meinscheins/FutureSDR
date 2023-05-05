@@ -9,6 +9,9 @@ use futuresdr::runtime::StreamOutput;
 mod bch;
 pub use bch::BCH;
 
+mod crc32;
+pub use crc32::CRC32;
+
 mod crc16;
 pub use crc16::CRC16;
 
@@ -17,6 +20,9 @@ pub use encoder::Encoder;
 
 mod mls;
 pub use mls::MLS;
+
+mod polar;
+pub use polar::PolarEncoder;
 
 
 pub fn base37_map(c: char) -> u8 {
@@ -46,7 +52,7 @@ pub fn nrz(bit: u8) -> isize {
     if bit == 0 {
         return 1;
     } else {
-        return -1;
+        return -1; 
     }
 }
 

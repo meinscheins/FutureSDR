@@ -36,6 +36,10 @@ impl CRC16 {
         self.crc = 0;
     }
 
+    pub fn crc(&mut self) -> u16{
+        return self.crc;
+    } 
+
     pub fn crc_u8(&mut self, data: u8) -> u16 {
         let mut tmp = self.crc ^ (data as u16);
         self.crc = (self.crc >> 8) ^ self.lut[(tmp & 255) as usize];

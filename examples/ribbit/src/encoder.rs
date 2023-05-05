@@ -5,7 +5,7 @@ use rustfft::{self,Fft,FftPlanner};
 use std::cmp::max;
 use std::sync::Arc;
 use std::vec::Vec;
-use crate::{MLS, bin, nrz, set_be_bit, CRC16, BCH, get_be_bit};
+use crate::{Modulation, MLS, bin, nrz, set_be_bit, CRC16, BCH, get_be_bit};
 
 pub struct Encoder {
     rate: isize,
@@ -53,7 +53,7 @@ pub struct Encoder {
 
 impl Encoder{
 
-    pub fn new(&mut self, rate: isize, noise_poly: isize, crc: u16, bch_minimal_polynomials: Vec<usize>) -> Encoder {
+    pub fn new(&mut self, rate: isize, noise_poly: isize, crc_poly: u16, bch_minimal_polynomials: Vec<usize>) -> Encoder {
         let mut planner = FftPlanner::<f32>::new();
         let mut factor: isize = 4;
         if rate <= 16000 {
@@ -82,7 +82,7 @@ impl Encoder{
             fft: planner.plan_fft_forward(self.symbol_length as usize), 
             ifft_papr: planner.plan_fft_inverse(self.symbol_length as usize * factor as usize), 
             fft_papr: planner.plan_fft_forward(self.symbol_length as usize * factor as usize),
-            crc: CRC16::new(crc, 0),
+            crc: CRC16::new(crc_poly, 0),
 	        bch: BCH::new(255, 71, bch_minimal_polynomials),
             noise_seq: MLS::new(0b100000000000000001001, 1), 
             //PolarEncoder<code_type> polar;
@@ -229,12 +229,25 @@ impl Encoder{
         return out;
     }
 
-    pub fn noise_symbol(&mut self) {
-
+    pub fn noise_symbol(&mut self) -> Vec<Complex32> {
+        let factor: f32 = (self.symbol_length as f32 / self.pay_car_cnt as f32).sqrt();
+        let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
+        let mut out: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
+        for i in 0..self.pay_car_cnt {
+            freq[bin(i + self.pay_car_off, self.carrier_offset, self.symbol_length) as usize]
+                *= factor * Complex32::new(nrz(self.noise_seq.mls() as u8) as f32, nrz(self.noise_seq.mls() as u8) as f32);
+        }
+        self.transform(&mut freq, &mut out, false);
+        return out;
     }
 
     pub fn payload_symbol(&mut self) {
-
+        let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
+        let mut out: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
+        for i in 0..self.pay_car_cnt {
+            freq[bin(i + self.pay_car_off, self.carrier_offset, self.symbol_length) as usize]
+                *= 
+        }
     }
 
     pub fn silence(&mut self) -> Vec<Complex32> {
