@@ -1,5 +1,3 @@
-use std::num;
-
 pub struct CRC16 {
     lut: [u16; 256],
     poly: u16,

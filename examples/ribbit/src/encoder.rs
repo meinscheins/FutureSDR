@@ -1,13 +1,12 @@
 use futuresdr::num_complex::Complex32;
-use rustfft::num_complex::Complex;
 use rustfft::num_traits::clamp;
 use rustfft::{self,Fft,FftPlanner};
-use std::cmp::max;
 use std::sync::Arc;
 use std::vec::Vec;
 use crate::{Modulation, MLS, bin, nrz, set_be_bit, CRC16, BCH, get_be_bit};
 
 pub struct Encoder {
+    modulation: Modulation,
     rate: isize,
     code_order: isize,
 	mod_bits: isize,
@@ -60,6 +59,7 @@ impl Encoder{
             factor = 1; 
         }
         Encoder { rate: rate, 
+            modulation: Modulation::Qpsk,
             code_order: 11, 
             mod_bits: 2, 
             code_len: 1 << self.code_order, 
@@ -241,13 +241,16 @@ impl Encoder{
         return out;
     }
 
-    pub fn payload_symbol(&mut self) {
+    pub fn payload_symbol(&mut self) -> Vec<Complex32> {
         let mut freq: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.symbol_length as usize];
         let mut out: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); self.extended_length as usize];
         for i in 0..self.pay_car_cnt {
+            self.prev[i as usize] *= self.modulation.map(&self.code, (self.mod_bits * (self.pay_car_cnt * self.symbol_number + i)) as usize);
             freq[bin(i + self.pay_car_off, self.carrier_offset, self.symbol_length) as usize]
-                *= 
+                = self.prev[i as usize]; 
         }
+        self.transform(&mut freq, &mut out, true);
+        return out;
     }
 
     pub fn silence(&mut self) -> Vec<Complex32> {

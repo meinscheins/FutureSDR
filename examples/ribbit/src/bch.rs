@@ -24,7 +24,7 @@ impl BCH {
         set_be_bit(&mut generator, np, 1);
         for m in minimal_polynomials {
             let mut m_degree: usize = 0;
-            while(m>>m_degree!= 0) {
+            while m>>m_degree!= 0 {
                 m_degree += 1;
             }
             m_degree -= 1;

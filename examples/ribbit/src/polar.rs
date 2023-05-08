@@ -1,4 +1,4 @@
-use std::{vec::Vec, isize};
+use std::vec::Vec;
 use crate::{CRC32, nrz, get_le_bit};
 
 fn get(bits: Vec<u32>, i: usize) -> bool{
@@ -9,22 +9,24 @@ fn get(bits: Vec<u32>, i: usize) -> bool{
    return true
 }
 
-pub fn polar_sys_enc(codeword: &mut Vec<u8>, message: &mut Vec<u8>, frozen: Vec<u32>, level: usize) {
+pub fn polar_sys_enc(codeword: &mut Vec<u8>, message: &mut Vec<i8>, frozen: &Vec<u32>, level: usize) {
     let length: usize = 1 << level;
     let mut i = 0;
     let mut j = 0;
     let mut h = 0;
-    while (i < length) {
+    while i < length {
         let mut msg0: u8 = 1;
         let mut msg1: u8 = 1;
-        if !get(frozen, i) {
-            msg0 = message[0];
-            message[0] += 1;
+        if !get(frozen.to_vec(), i) {
+            let message_u8: u8 = message[0] as u8;
+            msg0 = message_u8;
+            message[0] = (message_u8 + 1) as i8;
         } 
         
-        if !get(frozen, i+1) {
-            msg1 = message[0];
-            message[0] += 1;
+        if !get(frozen.to_vec(), i+1) {
+            let message_u8: u8 = message[0] as u8;
+            msg1 = message_u8;
+            message[0] = (message_u8 + 1) as i8;
         } 
         codeword[i] = msg0 * msg1;
         codeword[i+1] = msg1;
@@ -33,9 +35,9 @@ pub fn polar_sys_enc(codeword: &mut Vec<u8>, message: &mut Vec<u8>, frozen: Vec<
     i = 0;
     j = 0;
     h = 2;
-    while(h < length) {
-        while(i < length) {
-                while(j < i + h) {
+    while h < length {
+        while i < length {
+                while j < i + h {
                     let tmp: u8 = codeword[j+h];
                     codeword[j] *= tmp;
                     j += 1;
@@ -45,13 +47,13 @@ pub fn polar_sys_enc(codeword: &mut Vec<u8>, message: &mut Vec<u8>, frozen: Vec<
         h *= 2;
     }
     i = 0;
-    while(i < length) {
+    while i < length  {
         let mut msg0: u8 = 1;
         let mut msg1: u8 = 1;
-        if !get(frozen, i) {
+        if !get(frozen.to_vec(), i) {
             msg0 = codeword[i];
         } 
-        if !get(frozen, i+1) {
+        if !get(frozen.to_vec(), i+1) {
             msg1 = codeword[i+1];
         } 
         codeword[i] = msg0 * msg1;
@@ -61,9 +63,9 @@ pub fn polar_sys_enc(codeword: &mut Vec<u8>, message: &mut Vec<u8>, frozen: Vec<
     i = 0;
     j = 0;
     h = 2;
-    while(h < length) {
-        while(i < length) {
-                while(j < i + h) {
+    while h < length  {
+        while i < length {
+                while j < i + h {
                     let tmp: u8 = codeword[j+h];
                     codeword[j] *= tmp;
                     j += 1;
@@ -84,7 +86,7 @@ pub struct PolarEncoder {
 impl PolarEncoder {
     pub fn new(crc_poly: u32) -> PolarEncoder {
         let max_bits = 1360 + 32;
-        let mut mesg = vec![0; max_bits];
+        let mut mesg: Vec<i8> = vec![0; max_bits];
         PolarEncoder { crc: CRC32::new(crc_poly, 0), 
             code_order: 11, 
             max_bits: max_bits, 
@@ -92,7 +94,7 @@ impl PolarEncoder {
         }
     }
 
-    pub fn encode(&mut self, code: &mut Vec<u8>, message: &mut Vec<u8>, frozen_bits: Vec<u32>, data_bits: usize){
+    pub fn encode(&mut self, code: &mut Vec<u8>, message: &mut Vec<u8>, frozen_bits: &Vec<u32>, data_bits: usize){
         for i in 0..data_bits {
             self.mesg[i] = nrz(get_le_bit(message, i)) as i8;
         }
