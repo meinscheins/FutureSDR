@@ -50,7 +50,7 @@ class UDPReceiverWorker(QObject):
 
 
 SDR_ENDPOINTS = (
-    ("10.193.0.73", 1344),  # uav endpoint
+    ("10.193.0.73", 1346),  # uav endpoint
     ("10.193.0.73", 1345)  # ground station endpoint
 )
 
@@ -506,7 +506,7 @@ class Ui(QtWidgets.QMainWindow):
     def init_endpoint_controllers(self):
         try:
             self.uav_endpoint_controller = PhyController(
-                url="http://10.193.0.73:1337/api/fg/0/",
+                url="http://10.193.0.73:1348/api/fg/0/",
                 center_freq=int(2.45e9), rx_freq_offset=(4_000_000, 4_000_000),
                 tx_freq_offset=(4_000_000, 4_000_000),
                 rx_gain=(60, 60), tx_gain=(40, 40),
@@ -515,7 +515,7 @@ class Ui(QtWidgets.QMainWindow):
                 tx_device_channel=0,
             )
             self.ground_endpoint_controller = PhyController(
-                url="http://10.193.0.73:1336/api/fg/0/",
+                url="http://10.193.0.73:1347/api/fg/0/",
                 center_freq=int(2.45e9), rx_freq_offset=(-4_000_000, -4_000_000),
                 tx_freq_offset=(-4_000_000, -4_000_000),
                 rx_gain=(60, 60), tx_gain=(40, 40),

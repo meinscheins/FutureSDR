@@ -1,5 +1,7 @@
+use std::thread::sleep;
 use clap::Parser;
 use std::time::Duration;
+use atty::Stream;
 use futuresdr::blocks::soapy::SoapyDevSpec::Dev;
 use futuresdr::anyhow::Result;
 use futuresdr::async_io;
@@ -500,101 +502,13 @@ fn main() -> Result<()> {
         });
     }
 
-    // we are the udp server
-    if let Some(port) = args.local_port {
-        info!("Acting as UDP server.");
-        let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
-        let (tx_endpoint2, rx_endpoint2) = oneshot::channel::<SocketAddr>();
-        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
-        let socket2 = socket.clone();
-        let socket3 = socket.clone();
-        let socket_metrics = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
-        block_on(socket_metrics.connect(format!("{}:{}", args.metrics_ip, args.metrics_port))).unwrap();
-        let socket_metrics2 = socket_metrics.clone();
-        let socket_metrics3 = socket_metrics.clone();
 
-        rt.spawn_background(async move {
-            let mut buf = vec![0u8; 1024];
-
-            let (n, e) = socket.recv_from(&mut buf).await.unwrap();
-            handle
-                .call(
-                    message_selector, 
-                    message_in_port_id, 
-                    Pmt::Blob(buf[0..n].to_vec()))
-                .await
-                .unwrap();
-            tx_endpoint.send(e).unwrap();
-            tx_endpoint2.send(e).unwrap();
-
-            loop {
-                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
-                print!("s");
-                handle
-                .call(
-                    message_selector, 
-                    message_in_port_id, 
-                    Pmt::Blob(buf[0..n].to_vec()))
-                .await
-                .unwrap();
-                if let Ok(res) = socket_metrics.send(b"server,tx").await {
-                    // info!("server sent a frame.")
-                } else {
-                    warn!("could not send metric update.")
-                }
-            }
-        });
-
-        rt.spawn_background(async move {
-            let endpoint = rx_endpoint.await.unwrap();
-            info!("endpoint connected to local udp server {:?}", &endpoint);
-
-            loop {
-                if let Some(p) = wlan_rxed_frames.next().await {
-                    if let Pmt::Blob(v) = p {
-                        // info!("received frame, size {}", v.len() - 24);
-                        print!("r");
-                        socket2.send_to(&v[24..], endpoint).await.unwrap();
-                        if let Ok(res) = socket_metrics2.send(b"server,rx").await {
-                            // info!("server received a frame.")
-                        } else {
-                            warn!("could not send metric update.")
-                        }
-                    } else {
-                        warn!("pmt to tx was not a blob");
-                    }
-                } else {
-                    warn!("cannot read from MessagePipe receiver");
-                }    
-            }
-        });
-
-        rt.spawn_background(async move {
-            let endpoint = rx_endpoint2.await.unwrap();
-            loop {
-                if let Some(p) = zigbee_rxed_frames.next().await {
-                    if let Pmt::Blob(v) = p {
-                        // info!("received Zigbee frame size {}", v.len());
-                        print!("r");
-                        socket3.send_to(&v, endpoint).await.unwrap();
-                        if let Ok(res) = socket_metrics3.send(b"server,rx").await {
-                            // info!("server received a frame.")
-                        } else {
-                            warn!("could not send metric update.")
-                        }
-                    } else {
-                        warn!("pmt to tx was not a blob");
-                    }
-                } else {
-                    warn!("cannot read from MessagePipe receiver");
-               }   
-                
-            }
-        });
-    } else if let Some(remote) = args.remote_udp {
+    if let Some(remote) = args.remote_udp {
         info!("Acting as UDP client.");
-        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
+        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, if let Some(port) = args.local_port {port} else {0}))).unwrap();
+        println!("opened socket {:?}", socket);
         block_on(socket.connect(remote)).unwrap();
+        println!("bound socket {:?}", socket);
         let socket2 = socket.clone();
         let socket3 = socket.clone();
         let socket_metrics = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
@@ -666,12 +580,104 @@ fn main() -> Result<()> {
                     }
                 } else {
                     warn!("cannot read from MessagePipe receiver");
-               }   
-                
+               }
+
             }
         });
 
-        
+
+    }
+    // we are the udp server
+    else if let Some(port) = args.local_port {
+        info!("Acting as UDP server.");
+        let (tx_endpoint, rx_endpoint) = oneshot::channel::<SocketAddr>();
+        let (tx_endpoint2, rx_endpoint2) = oneshot::channel::<SocketAddr>();
+        let socket = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, port))).unwrap();
+        let socket2 = socket.clone();
+        let socket3 = socket.clone();
+        let socket_metrics = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
+        block_on(socket_metrics.connect(format!("{}:{}", args.metrics_ip, args.metrics_port))).unwrap();
+        let socket_metrics2 = socket_metrics.clone();
+        let socket_metrics3 = socket_metrics.clone();
+
+        rt.spawn_background(async move {
+            let mut buf = vec![0u8; 1024];
+
+            let (n, e) = socket.recv_from(&mut buf).await.unwrap();
+            handle
+                .call(
+                    message_selector,
+                    message_in_port_id,
+                    Pmt::Blob(buf[0..n].to_vec()))
+                .await
+                .unwrap();
+            tx_endpoint.send(e).unwrap();
+            tx_endpoint2.send(e).unwrap();
+
+            loop {
+                let (n, _) = socket.recv_from(&mut buf).await.unwrap();
+                print!("s");
+                handle
+                .call(
+                    message_selector,
+                    message_in_port_id,
+                    Pmt::Blob(buf[0..n].to_vec()))
+                .await
+                .unwrap();
+                if let Ok(res) = socket_metrics.send(b"server,tx").await {
+                    // info!("server sent a frame.")
+                } else {
+                    warn!("could not send metric update.")
+                }
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint.await.unwrap();
+            info!("endpoint connected to local udp server {:?}", &endpoint);
+
+            loop {
+                if let Some(p) = wlan_rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        // info!("received frame, size {}", v.len() - 24);
+                        print!("r");
+                        socket2.send_to(&v[24..], endpoint).await.unwrap();
+                        if let Ok(res) = socket_metrics2.send(b"server,rx").await {
+                            // info!("server received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+                }
+            }
+        });
+
+        rt.spawn_background(async move {
+            let endpoint = rx_endpoint2.await.unwrap();
+            loop {
+                if let Some(p) = zigbee_rxed_frames.next().await {
+                    if let Pmt::Blob(v) = p {
+                        // info!("received Zigbee frame size {}", v.len());
+                        print!("r");
+                        socket3.send_to(&v, endpoint).await.unwrap();
+                        if let Ok(res) = socket_metrics3.send(b"server,rx").await {
+                            // info!("server received a frame.")
+                        } else {
+                            warn!("could not send metric update.")
+                        }
+                    } else {
+                        warn!("pmt to tx was not a blob");
+                    }
+                } else {
+                    warn!("cannot read from MessagePipe receiver");
+               }
+
+            }
+        });
     } else {
         info!("No UDP forwarding configured");
         rt.spawn_background(async move {
@@ -825,18 +831,27 @@ fn main() -> Result<()> {
 
     let socket_protocol_num = block_on(UdpSocket::bind(format!("{}:{}", args.local_ip, 0))).unwrap();
 
-    // Keep asking user for the selection
+    // // if this program is running in an interactive terminal
+    // if atty::is(atty::Stream::Stdin) {
+    //     // Keep asking user for the selection
+    //     loop {
+    //         println!("Enter a new output index");
+    //         // Get input from stdin and remove all whitespace (most importantly '\n' at the end)
+    //         let mut input = String::new(); // Input buffer
+    //         std::io::stdin()
+    //             .read_line(&mut input)
+    //             .expect("error: unable to read user input");
+    //         input.retain(|c| !c.is_whitespace());
+    //
+    //         // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
+    //         block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, args.protocol_switching_ctrl_port))).unwrap();
+    //     }
+    // }
+    // else {
+    println!("running in background, disabling manual protocol selection.");
     loop {
-        println!("Enter a new output index");
-        // Get input from stdin and remove all whitespace (most importantly '\n' at the end)
-        let mut input = String::new(); // Input buffer
-        std::io::stdin()
-            .read_line(&mut input)
-            .expect("error: unable to read user input");
-        input.retain(|c| !c.is_whitespace());
-
-        // If the user entered a valid number, set the new frequency, gain and sample rate by sending a message to the `FlowgraphHandle`
-        block_on(socket_protocol_num.send_to(&input.into_bytes(), format!("{}:{}", args.local_ip, args.protocol_switching_ctrl_port))).unwrap();
+        sleep(Duration::from_secs(5));
     }
+    // }
 
 }
