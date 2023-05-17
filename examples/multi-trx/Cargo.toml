@@ -40,5 +40,7 @@ futuresdr = { path = "../.."}
 zigbee = { path = "../zigbee"}
 wlan = { path = "../wlan"}
 atty = "0.2"
-
-
+forky-tun = { version = "0.5.5", features = ["async"] }
+packet = "0.1.4"
+futures = "0.3.28"
+tokio = { version = "1.28.1", features = ["full"] }
