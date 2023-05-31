@@ -66,8 +66,8 @@ use zigbee::ClockRecoveryMm as ZigbeeClockRecoveryMm;
 use zigbee::Decoder as ZigbeeDecoder;
 
 
-const PAD_FRONT: usize = 10000;
-const PAD_TAIL: usize = 10000;
+// const PAD_FRONT: usize = 10000;
+// const PAD_TAIL: usize = 10000;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -138,6 +138,9 @@ struct Args {
     /// TX MCS
     #[clap(long, value_parser = WlanMcs::parse, default_value = "qpsk12")]
     wlan_mcs: WlanMcs,
+    /// padding front and back
+    #[clap(long, default_value_t = 10000)]
+    wlan_pad_len: usize,
     /// local IP to bind to
     #[clap(long, value_parser, default_value = "0.0.0.0")]
     local_ip: String,
@@ -145,11 +148,8 @@ struct Args {
     #[clap(long, value_parser)]
     remote_ip: String,
     /// local IP to bind to
-    #[clap(long, value_parser, default_value = "10.193.0.73")]
-    metrics_ip: String,
-    /// local UDP port to receive messages to send
-    #[clap(long, value_parser, default_value = "1340")]
-    metrics_port: u32,
+    #[clap(long, value_parser, default_value = "172.18.0.1:1340")]
+    metrics_reporting_socket: String,
     /// local UDP port to receive messages to send
     #[clap(long, value_parser, default_value = "1341")]
     protocol_switching_ctrl_port: u32,
@@ -177,7 +177,7 @@ fn main() -> Result<()> {
     };
     let mut size = 4096;
     let prefix_out_size = loop {
-        if size / 8 >= PAD_FRONT + std::cmp::max(PAD_TAIL, 1) + 320 + MAX_SYM * 80 {
+        if size / 8 >= args.wlan_pad_len + std::cmp::max(args.wlan_pad_len, 1) + 320 + MAX_SYM * 80 {
             break size;
         }
         size += 4096
@@ -329,7 +329,7 @@ fn main() -> Result<()> {
     wlan_fft.set_tag_propagation(Box::new(wlan_fft_tag_propagation));
     let wlan_fft = fg.add_block(wlan_fft);
     fg.connect_stream(wlan_mapper, "out", wlan_fft, "in")?;
-    let wlan_prefix = fg.add_block(WlanPrefix::new(PAD_FRONT, PAD_TAIL));
+    let wlan_prefix = fg.add_block(WlanPrefix::new(args.wlan_pad_len, args.wlan_pad_len));
     fg.connect_stream_with_type(
         wlan_fft,
         "out",
@@ -547,10 +547,13 @@ fn main() -> Result<()> {
     let tun_queue2 = tun_queue1.clone();
     let tun_queue3 = tun_queue1.clone();
 
-    let socket_metrics = block_on(UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))).unwrap();
-    block_on(socket_metrics.connect(format!("{}:{}", args.metrics_ip, args.metrics_port))).unwrap();
+    let socket_metrics = block_on(UdpSocket::bind("0.0.0.0:0")).unwrap();
+    block_on(socket_metrics.connect(args.metrics_reporting_socket)).unwrap();
     let socket_metrics2 = socket_metrics.clone();
     let socket_metrics3 = socket_metrics.clone();
+    let local_ip1 = args.local_ip.clone();
+    let local_ip2 = args.local_ip.clone();
+    let local_ip3 = args.local_ip.clone();
 
     rt.spawn_background(async move {
         println!("initialized sender.");
@@ -567,7 +570,7 @@ fn main() -> Result<()> {
                     )
                     .await
                     .unwrap();
-                    if let Ok(res) = socket_metrics.send(b"server,tx").await {
+                    if let Ok(res) = socket_metrics.send(format!("{},tx", local_ip1).as_bytes()).await {
                         // info!("server sent a frame.")
                     } else {
                         warn!("could not send metric update.")
@@ -586,7 +589,7 @@ fn main() -> Result<()> {
                     // info!("received frame, size {}", v.len() - 24);
                     print!("r");
                     tun_queue2.send(&v[24..].to_vec()).await.unwrap();
-                    if let Ok(_) = socket_metrics2.send(b"server,rx").await {
+                    if let Ok(_) = socket_metrics2.send(format!("{},rx", local_ip2).as_bytes()).await {
                         // info!("server received a frame.")
                     } else {
                         warn!("could not send metric update.")
@@ -608,7 +611,7 @@ fn main() -> Result<()> {
                     // info!("received Zigbee frame size {}", v.len());
                     print!("r");
                     tun_queue3.send(&v.to_vec()).await.unwrap();
-                    if let Ok(_) = socket_metrics3.send(b"server,rx").await {
+                    if let Ok(_) = socket_metrics3.send(format!("{},rx", local_ip3).as_bytes()).await {
                         // info!("server received a frame.")
                     } else {
                         warn!("could not send metric update.")

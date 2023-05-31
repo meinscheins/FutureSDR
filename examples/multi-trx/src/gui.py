@@ -63,10 +63,10 @@ RX_PORT_PACKAGE_COUNTER = 1340
 RX_PORT_POSITION = 1342
 
 COUNTING_BINS = [
-    ('server', 'tx'),
-    ('server', 'rx'),
-    ('client', 'tx'),
-    ('client', 'rx')
+    ('192.168.42.10', 'tx'),
+    ('192.168.42.10', 'rx'),
+    ('192.168.42.11', 'tx'),
+    ('192.168.42.11', 'rx')
 ]
 
 MAX_PATH_LOSS_FOR_PLOTTING = 120
@@ -321,13 +321,13 @@ class Ui(QtWidgets.QMainWindow):
         else:
             self.magic_scaling_factor_send.clicked.connect(self.send_magic_scaling_factor)
 
-        self.get_datapoint_rate_ag = partial(self.get_datapoint_rate, keys=(('server', 'rx'), ('client', 'tx')))
-        self.get_datapoint_rate_ga = partial(self.get_datapoint_rate, keys=(('client', 'rx'), ('server', 'tx')))
+        self.get_datapoint_rate_ag = partial(self.get_datapoint_rate, keys=(('192.168.42.10', 'rx'), ('192.168.42.11', 'tx')))
+        self.get_datapoint_rate_ga = partial(self.get_datapoint_rate, keys=(('192.168.42.11', 'rx'), ('192.168.42.10', 'tx')))
         self.get_datapoint_rate_combined = lambda: (
             (
-                    self.get_datapoint_rate(keys=(('server', 'rx'), ('client', 'tx')))[0]
+                    self.get_datapoint_rate(keys=(('192.168.42.10', 'rx'), ('192.168.42.11', 'tx')))[0]
                     +
-                    self.get_datapoint_rate(keys=(('client', 'rx'), ('server', 'tx')))[0]
+                    self.get_datapoint_rate(keys=(('192.168.42.11', 'rx'), ('192.168.42.10', 'tx')))[0]
             ) / 2,
             0 if self.radio_button_wifi.isChecked() else 1
         )
@@ -445,10 +445,10 @@ class Ui(QtWidgets.QMainWindow):
         self.protocol_switching_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.getprotobyname("udp"))
         self.path_loss_switching_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.getprotobyname("udp"))
         self.datapoints = {
-            ('server', 'tx'): [],
-            ('server', 'rx'): [],
-            ('client', 'tx'): [],
-            ('client', 'rx'): []
+            ('192.168.42.10', 'tx'): [],
+            ('192.168.42.10', 'rx'): [],
+            ('192.168.42.11', 'tx'): [],
+            ('192.168.42.11', 'rx'): []
         }
         self.uav_pos: np.ndarray = np.array((0, 0, 0))
         self.uav_orientation: np.ndarray = np.array((0, 0, 0))
@@ -608,10 +608,6 @@ class Ui(QtWidgets.QMainWindow):
                 counts[key] = len(current_data) - first_relevant_datapoint
             except StopIteration:
                 counts[key] = 0
-        # print(
-        #     f"{'AG' if keys[0] == ('server', 'rx') else 'GA'}: "
-        #     f"sent {counts[keys[1]]} samples, received {counts[keys[0]]}"
-        # )
         if counts[keys[0]] == 0 or counts[keys[1]] == 0:
             val = 0
         else:
