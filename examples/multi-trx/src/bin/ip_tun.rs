@@ -1,19 +1,20 @@
+use std::collections::HashMap;
 use std::thread::sleep;
 use clap::Parser;
 use std::time::Duration;
-use forky_tun::{self, Configuration, TunPacket};
+use forky_tun::{self, Configuration};
 // use futures::StreamExt;
-use futures::sink::SinkExt;
+// use futures::sink::SinkExt;
 use std::net::Ipv4Addr;
 use tokio;
 // use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use packet::ip::Packet;
+// use packet::ip::Packet;
 use futuresdr::blocks::soapy::SoapyDevSpec::Dev;
 use futuresdr::anyhow::Result;
 use futuresdr::async_io;
 use futuresdr::async_io::block_on;
 use futuresdr::async_io::Timer;
-use futuresdr::async_net::SocketAddr;
+// use futuresdr::async_net::SocketAddr;
 use futuresdr::async_net::UdpSocket;
 use futuresdr::blocks::Apply;
 use futuresdr::blocks::Combine;
@@ -27,7 +28,7 @@ use futuresdr::blocks::SoapySourceBuilder;
 //use futuresdr::blocks::WebsocketSinkBuilder;
 //use futuresdr::blocks::WebsocketSinkMode;
 use futuresdr::futures::channel::mpsc;
-use futuresdr::futures::channel::oneshot;
+// use futuresdr::futures::channel::oneshot;
 use futuresdr::futures::StreamExt;
 use futuresdr::log::info;
 use futuresdr::log::warn;
@@ -45,7 +46,8 @@ use wlan::fft_tag_propagation as wlan_fft_tag_propagation;
 use wlan::parse_channel as wlan_parse_channel;
 use wlan::Decoder as WlanDecoder;
 use wlan::Delay as WlanDelay;
-use wlan::Encoder as WlanEncoder;
+// use wlan::Encoder as WlanEncoder;
+use multitrx::Encoder as WlanEncoder;
 //use wlan::FftShift;
 use wlan::FrameEqualizer as WlanFrameEqualizer;
 //use wlan::Keep1InN;
@@ -68,6 +70,23 @@ use zigbee::Decoder as ZigbeeDecoder;
 
 // const PAD_FRONT: usize = 10000;
 // const PAD_TAIL: usize = 10000;
+// #[derive(Debug, Deserialize)]
+// struct DstPortPriorityMap {
+//     scr_port_mapping: HashMap<u16, usize>,
+// }
+//
+//
+// fn parse_flow_priority_json(filepath: &str) -> Result<HashMap<u16, DstPortPriorityMap>, String> {
+//     if let Ok(priority_file_as_string) = fs::read_to_string(filepath) {
+//         let data: HashMap<u16, DstPortPriorityMap> = serde_json::from_str(&priority_file_as_string).unwrap();
+//         return Ok(data);
+//     }
+//     else {
+//         let dummy_map: HashMap<u16, DstPortPriorityMap> = HashMap::new();
+//         warn!("FLAG 6342");
+//         return Ok(dummy_map);
+//     }
+// }
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -162,11 +181,24 @@ struct Args {
     /// Drop policy to apply on the selector.
     #[clap(short, long, default_value = "none")]
     drop_policy: DropPolicy,
+    /// Path to JSON mapping ports to ip dscp priority values to override specific flow priorities
+    // #[clap(long, value_parser = parse_flow_priority_json, default_value = "")]
+    #[clap(long, value_parser)]
+    flow_priority_file: String,
 }
+
+static DSCP_EF: u8 = 0b101110 << 2;
 
 fn main() -> Result<()> {
     let args = Args::parse();
     println!("Configuration: {:?}", args);
+
+    let flow_priority_map: HashMap<u16, u8> = HashMap::from([
+        (14550, DSCP_EF),
+        (18570, DSCP_EF),
+        (10317, DSCP_EF),  // https://gazebosim.org/api/transport/11.0/envvars.html
+        (10318, DSCP_EF),
+    ]);  // TODO
 
     let mut size = 4096;
     let prefix_in_size = loop {
@@ -446,7 +478,10 @@ fn main() -> Result<()> {
     fg.connect_stream(zigbee_modulator, "out", zigbee_iq_delay, "in")?;
     fg.connect_stream(zigbee_iq_delay, "out", sink_selector, "in1")?;
 
-    // message input selector
+    // ========================================
+    // MESSAGE INPUT SELECTOR
+    // ========================================
+
     let message_selector = MessageSelector::new();
     let message_in_port_id = message_selector
         .message_input_name_to_id("message_in")
@@ -523,7 +558,7 @@ fn main() -> Result<()> {
 
     let rt_tokio = tokio::runtime::Runtime::new().unwrap();
     let (tx_tun_dev1, mut rx_tun_dev1) = tokio::sync::mpsc::channel(1);
-    let keep_channel_open = tx_tun_dev1.clone();
+    let _keep_channel_open = tx_tun_dev1.clone();
     // let (tx_tun_dev2, mut rx_tun_dev2) = oneshot::channel::<forky_tun::AsyncQueue>();
     // let (tx_tun_dev3, mut rx_tun_dev3) = oneshot::channel::<forky_tun::AsyncQueue>();
     rt_tokio.spawn(async move {
@@ -533,7 +568,10 @@ fn main() -> Result<()> {
         // let tun_queue2 = tun_queues.remove(0);
         // let tun_queue3 = tun_queues.remove(0);
         // println!("{:?}", tun_queue2.get_ref().tun);
-        tx_tun_dev1.send(tun_queue1).await;
+        match tx_tun_dev1.send(tun_queue1).await {
+            Ok(_) => {},
+            Err(_) => panic!("could not send TUN interface handle out of async creation context."),
+        }
         // println!("{:?}", tun_queue2.get_ref().as_raw_fd());
         // tx_tun_dev2.send(tun_queue2);
         // tx_tun_dev3.send(tun_queue3);
@@ -559,8 +597,39 @@ fn main() -> Result<()> {
         println!("initialized sender.");
         let mut buf = vec![0u8; 1024];
         loop {
+            // println!("blub");
             match tun_queue1.recv(&mut buf).await {
                 Ok(n) => {
+                    // 4 bytes offset due to flag bytes added to the front of each packet by TUN interface
+                    // if format!("{}.{}.{}.{}", buf[20], buf[21], buf[22], buf[23]) != remote_ip1 {
+                    //     println!("{:?}", buf);
+                    //     warn!("received packet with dst_ip not matching {}", remote_ip1);
+                    //     continue;  // TODO
+                    // }
+                    let next_protocol = buf[4 + 9] as usize;
+                    if next_protocol == 6_usize || next_protocol == 17_usize {
+                        let ip_header_length = ((buf[4] & 0b00001111) as usize * 4_usize) as usize;
+                        // let src_port = ((buf[4 + ip_header_length] as u16) << 8) | (buf[4 + ip_header_length + 1] as u16);
+                        let dst_port = ((buf[4 + ip_header_length + 2] as u16) << 8) | (buf[4 + ip_header_length + 3] as u16);
+                        // println!("{}", format!("src: {}, dst: {}", src_port, dst_port));
+                        if let Some(new_dscp_val) = flow_priority_map.get(&dst_port) {
+                            // println!("Replacing old dscp {:#8b} with new value {:#8b}", buf[5], new_dscp_val);
+                            buf[4 + 1] = *new_dscp_val;
+                            // if we change the header, we need to recuopute and update the checksum, else the packet will be discarded at the receiver
+                            let mut new_checksum = 0_u16;
+                            for i in 0..5 {
+                                let (new_checksum_tmp, carry) = new_checksum.overflowing_add(((buf[4+2*i] as u16) << 8) + (buf[4+2*i+1] as u16));
+                                new_checksum = if carry {new_checksum_tmp + 1} else {new_checksum_tmp};
+                            }
+                            for i in 6..(ip_header_length / 2) {
+                                let (new_checksum_tmp, carry) = new_checksum.overflowing_add(((buf[4+2*i] as u16) << 8) + (buf[4+2*i+1] as u16));
+                                new_checksum = if carry {new_checksum_tmp + 1} else {new_checksum_tmp};
+                            }
+                            new_checksum = !new_checksum;
+                            buf[4 + 10] = (new_checksum >> 8) as u8;
+                            buf[4 + 11] = (new_checksum & 0b0000000011111111) as u8;
+                        }
+                    }
                     print!("s");
                     handle
                     .call(
@@ -570,7 +639,7 @@ fn main() -> Result<()> {
                     )
                     .await
                     .unwrap();
-                    if let Ok(res) = socket_metrics.send(format!("{},tx", local_ip1).as_bytes()).await {
+                    if let Ok(_res) = socket_metrics.send(format!("{},tx", local_ip1).as_bytes()).await {
                         // info!("server sent a frame.")
                     } else {
                         warn!("could not send metric update.")
@@ -650,7 +719,7 @@ fn main() -> Result<()> {
                                         src_freq_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(rx_frequency_from_channel), Pmt::U32(args.soapy_rx_channel as u32)])
                                     )
-                            );
+                            ).unwrap();
                             async_io::block_on(
                                 input_handle
                                     .call(
@@ -658,7 +727,7 @@ fn main() -> Result<()> {
                                         sink_freq_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(tx_frequency_from_channel), Pmt::U32(args.soapy_tx_channel as u32)])
                                     )
-                            );
+                            ).unwrap();
                         } else {
                             async_io::block_on(
                                 input_handle
@@ -667,7 +736,7 @@ fn main() -> Result<()> {
                                         src_center_freq_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
                                     )
-                            );
+                            ).unwrap();
                             async_io::block_on(
                                 input_handle
                                     .call(
@@ -676,7 +745,7 @@ fn main() -> Result<()> {
                                         Pmt::VecPmt(vec![Pmt::F64(center_freq[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
                                     )
                                 
-                            );
+                            ).unwrap();
                             async_io::block_on(
                                 input_handle
                                     .call(
@@ -684,7 +753,7 @@ fn main() -> Result<()> {
                                         src_freq_offset_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(rx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_rx_channel as u32)])
                                     )
-                            );
+                            ).unwrap();
                             async_io::block_on(
                                 input_handle
                                     .call(
@@ -692,7 +761,7 @@ fn main() -> Result<()> {
                                         sink_freq_offset_input_port_id,
                                         Pmt::VecPmt(vec![Pmt::F64(tx_freq_offset[new_index as usize]), Pmt::U32(args.soapy_tx_channel as u32)])
                                     )
-                            );
+                            ).unwrap();
                         }
                         async_io::block_on(
                             input_handle
@@ -701,7 +770,7 @@ fn main() -> Result<()> {
                                     src_sample_rate_input_port_id,
                                     Pmt::F64(sample_rate[new_index as usize])
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -709,7 +778,7 @@ fn main() -> Result<()> {
                                     src_gain_input_port_id,
                                     Pmt::F64(rx_gain[new_index as usize])
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -717,7 +786,7 @@ fn main() -> Result<()> {
                                     output_index_port_id,
                                     Pmt::U32(new_index)
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -725,7 +794,7 @@ fn main() -> Result<()> {
                                     sink_sample_rate_input_port_id,
                                     Pmt::F64(sample_rate[new_index as usize])
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -733,7 +802,7 @@ fn main() -> Result<()> {
                                     sink_gain_input_port_id,
                                     Pmt::F64(tx_gain[new_index as usize])
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -741,7 +810,7 @@ fn main() -> Result<()> {
                                     input_index_port_id,
                                     Pmt::U32(new_index)
                                 )
-                        );
+                        ).unwrap();
                         async_io::block_on(
                             input_handle
                                 .call(
@@ -749,7 +818,7 @@ fn main() -> Result<()> {
                                     output_selector_port_id,
                                     Pmt::U32(new_index)
                                 )
-                        );
+                        ).unwrap();
                     }
                     else {
                         println!("Invalid protocol index.")
@@ -760,7 +829,7 @@ fn main() -> Result<()> {
         }
     });
 
-    let socket_protocol_num = block_on(UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0_u16))).unwrap();
+    // let socket_protocol_num = block_on(UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0_u16))).unwrap();
 
     // // if this program is running in an interactive terminal
     // if atty::is(atty::Stream::Stdin) {
