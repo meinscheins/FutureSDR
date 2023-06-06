@@ -482,6 +482,8 @@ class Ui(QtWidgets.QMainWindow):
         self.pushButton.clicked.connect(self.apply_settings)
         self.pushButton_3.clicked.connect(self.init_endpoint_controllers)
 
+        self.stackedWidget_2.setCurrentIndex(0)
+        self.stackedWidget_3.setCurrentIndex(0)
         self.radio_button_wifi.setEnabled(False)
         self.radio_button_zigbee.setEnabled(False)
         self.tabWidget.setEnabled(False)
